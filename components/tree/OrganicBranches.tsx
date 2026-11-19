@@ -4,9 +4,18 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { BranchEdge, Vec3 } from "@/lib/lineage";
-import { TreeLayoutMode } from "@/types/family";
+import { FamilyMember, TreeLayoutMode } from "@/types/family";
+import {
+  createCoiledVeinCurve,
+  createTaperedOrganicTube,
+} from "@/lib/treeGeometry";
+import { getBarkTextures } from "@/lib/treeTextures";
+import { SanctuaryGround } from "./SanctuaryGround";
+import { TreeTrunkAndRoots } from "./TreeTrunkAndRoots";
+import { TreeCanopy } from "./TreeCanopy";
 
 interface OrganicBranchesProps {
+  members: FamilyMember[];
   edges: BranchEdge[];
   positions: Record<string, Vec3>;
   layoutMode: TreeLayoutMode;
@@ -15,157 +24,221 @@ interface OrganicBranchesProps {
   generations: number[];
 }
 
-interface BranchTubeProps {
+interface BranchBoughProps {
+  edgeId: string;
   from: Vec3;
   to: Vec3;
   kind: "lineage" | "partner";
   layoutMode: TreeLayoutMode;
   highlighted: boolean;
   dimmed: boolean;
+  seed: number;
 }
 
-function BranchTube({
+function BranchBough({
   from,
   to,
   kind,
   layoutMode,
   highlighted,
   dimmed,
-}: BranchTubeProps) {
-  const geometry = useMemo(() => {
+  seed,
+}: BranchBoughProps) {
+  const barkTextures = useMemo(() => getBarkTextures(), []);
+
+  const { mainGeo, veinGeo, partnerTwinGeo } = useMemo(() => {
     const start = new THREE.Vector3(...from);
     const end = new THREE.Vector3(...to);
 
     if (kind === "partner") {
+      // Sculpted intertwined double-helix golden vines uniting partners
       const mid = start.clone().lerp(end, 0.5);
-      mid.y += layoutMode === "organic" ? 0.42 : 0.35;
-      const curve = new THREE.CatmullRomCurve3([start, mid, end]);
-      return new THREE.TubeGeometry(curve, 24, highlighted ? 0.048 : 0.032, 8, false);
+      mid.y += layoutMode === "organic" ? 0.45 : 0.38;
+      const baseCurve = new THREE.CatmullRomCurve3([start, mid, end]);
+      const strandA = createCoiledVeinCurve(baseCurve, 0.045, 0.045, 1.5, 0, 28);
+      const strandB = createCoiledVeinCurve(
+        baseCurve,
+        0.045,
+        0.045,
+        1.5,
+        Math.PI,
+        28
+      );
+      const r = highlighted ? 0.036 : 0.024;
+      return {
+        mainGeo: createTaperedOrganicTube({
+          curve: strandA,
+          tubularSegments: 28,
+          radialSegments: 8,
+          radiusStart: r,
+          radiusEnd: r,
+          barkNoise: 0.02,
+          seed,
+        }),
+        partnerTwinGeo: createTaperedOrganicTube({
+          curve: strandB,
+          tubularSegments: 28,
+          radialSegments: 8,
+          radiusStart: r * 0.85,
+          radiusEnd: r * 0.85,
+          barkNoise: 0.02,
+          seed: seed + 5,
+        }),
+        veinGeo: null,
+      };
     }
 
     if (layoutMode === "organic") {
-      // Sinuous upward botanical bough curve
+      // Sinuous upward botanical bough with organic lateral elbow and subtle Z swell
       const dy = end.y - start.y;
+      const lateralBend = ((seed % 5) - 2) * 0.14;
       const ctrl1 = new THREE.Vector3(
-        start.x + (end.x - start.x) * 0.22,
-        start.y + dy * 0.42,
-        start.z + (end.z - start.z) * 0.18
+        start.x + (end.x - start.x) * 0.24 + lateralBend,
+        start.y + dy * 0.44,
+        start.z + (end.z - start.z) * 0.22 + (seed % 2 === 0 ? 0.22 : -0.22)
       );
       const ctrl2 = new THREE.Vector3(
-        start.x + (end.x - start.x) * 0.72,
-        start.y + dy * 0.72,
-        start.z + (end.z - start.z) * 0.78
+        start.x + (end.x - start.x) * 0.72 - lateralBend * 0.6,
+        start.y + dy * 0.78,
+        start.z + (end.z - start.z) * 0.76
       );
       const curve = new THREE.CatmullRomCurve3([start, ctrl1, ctrl2, end]);
-      // Thicker limbs lower in the tree, finer boughs in the canopy
-      const heightFactor = Math.max(0.45, 1 - (start.y + 4.5) / 14);
-      const radius = (highlighted ? 0.095 : 0.068) * heightFactor;
-      return new THREE.TubeGeometry(curve, 28, radius, 8, false);
+
+      // Realistic botanical tapering: thick lower boughs, slender upper limbs
+      const elevationRatio = THREE.MathUtils.clamp((start.y + 2.5) / 11, 0, 1);
+      const radiusStart =
+        THREE.MathUtils.lerp(0.18, 0.075, elevationRatio) *
+        (highlighted ? 1.14 : 1);
+      const radiusEnd =
+        THREE.MathUtils.lerp(0.095, 0.04, elevationRatio) *
+        (highlighted ? 1.14 : 1);
+
+      const main = createTaperedOrganicTube({
+        curve,
+        tubularSegments: 32,
+        radialSegments: 12,
+        radiusStart,
+        radiusEnd,
+        taperPower: 0.85,
+        flareStart: 0.24,
+        fluteCount: 4,
+        fluteDepth: 0.1,
+        twist: 1.2 * (seed % 2 === 0 ? 1 : -1),
+        barkNoise: 0.045,
+        seed,
+      });
+
+      const veinCurve = createCoiledVeinCurve(
+        curve,
+        radiusStart * 1.04,
+        radiusEnd * 1.05,
+        1.2,
+        seed * 0.8,
+        30
+      );
+      const vein = createTaperedOrganicTube({
+        curve: veinCurve,
+        tubularSegments: 30,
+        radialSegments: 6,
+        radiusStart: highlighted ? 0.026 : 0.013,
+        radiusEnd: highlighted ? 0.016 : 0.008,
+        barkNoise: 0,
+      });
+
+      return { mainGeo: main, veinGeo: vein, partnerTwinGeo: null };
     }
 
-    // Radial phylogenetic arc
+    // Radial "Tree of Life" graceful phylogenetic ribbon arc
     const mid = start.clone().lerp(end, 0.5);
-    mid.y += 0.55;
+    mid.y += 0.62;
     const curve = new THREE.CatmullRomCurve3([start, mid, end]);
-    return new THREE.TubeGeometry(curve, 24, highlighted ? 0.065 : 0.04, 8, false);
-  }, [from, to, kind, layoutMode, highlighted]);
+    const rStart = highlighted ? 0.072 : 0.048;
+    const rEnd = highlighted ? 0.044 : 0.026;
+    return {
+      mainGeo: createTaperedOrganicTube({
+        curve,
+        tubularSegments: 26,
+        radialSegments: 10,
+        radiusStart: rStart,
+        radiusEnd: rEnd,
+        barkNoise: 0.02,
+        seed,
+      }),
+      veinGeo: null,
+      partnerTwinGeo: null,
+    };
+  }, [from, to, kind, layoutMode, highlighted, seed]);
 
-  const color = highlighted
-    ? "#F0CC88"
-    : kind === "partner"
-      ? "#B88A44"
-      : "#9C7338";
-
-  const emissive = highlighted ? "#D4A359" : "#4A3316";
-  const emissiveIntensity = highlighted ? 1.15 : dimmed ? 0.12 : 0.42;
-  const opacity = highlighted ? 0.96 : dimmed ? 0.15 : 0.68;
-
-  return (
-    <mesh geometry={geometry}>
-      <meshStandardMaterial
-        color={color}
-        emissive={emissive}
-        emissiveIntensity={emissiveIntensity}
-        roughness={0.42}
-        metalness={0.35}
-        transparent
-        opacity={opacity}
-      />
-    </mesh>
-  );
-}
-
-/**
- * Sculptural root tendrils anchoring Generation 0 into the obsidian forest floor.
- */
-function RootNetwork({ visible }: { visible: boolean }) {
-  const rootGeometries = useMemo(() => {
-    const geos: THREE.TubeGeometry[] = [];
-    const rootCount = 9;
-    for (let i = 0; i < rootCount; i++) {
-      const angle = (i / rootCount) * Math.PI * 2 + 0.25;
-      const spread = 3.4 + (i % 3) * 1.15;
-      const startX = Math.cos(angle) * 0.65;
-      const startZ = Math.sin(angle) * 0.45;
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(startX, -4.1, startZ),
-        new THREE.Vector3(Math.cos(angle) * (spread * 0.45), -5.3, Math.sin(angle) * (spread * 0.45)),
-        new THREE.Vector3(Math.cos(angle + 0.14) * (spread * 0.8), -6.15, Math.sin(angle + 0.14) * (spread * 0.8)),
-        new THREE.Vector3(Math.cos(angle - 0.08) * spread, -6.55, Math.sin(angle - 0.08) * spread),
-      ]);
-      geos.push(new THREE.TubeGeometry(curve, 24, 0.085 - (i % 2) * 0.02, 7, false));
-    }
-    return geos;
-  }, []);
-
-  if (!visible) return null;
+  if (kind === "partner") {
+    return (
+      <group>
+        <mesh geometry={mainGeo}>
+          <meshStandardMaterial
+            color={highlighted ? "#F5DA9D" : "#D4A359"}
+            emissive="#D4A359"
+            emissiveIntensity={highlighted ? 1.45 : dimmed ? 0.1 : 0.52}
+            roughness={0.28}
+            metalness={0.55}
+            transparent
+            opacity={highlighted ? 0.98 : dimmed ? 0.14 : 0.78}
+          />
+        </mesh>
+        {partnerTwinGeo && (
+          <mesh geometry={partnerTwinGeo}>
+            <meshStandardMaterial
+              color={highlighted ? "#FFEBC2" : "#B88946"}
+              emissive="#E6C385"
+              emissiveIntensity={highlighted ? 1.15 : dimmed ? 0.08 : 0.38}
+              roughness={0.34}
+              metalness={0.5}
+              transparent
+              opacity={highlighted ? 0.92 : dimmed ? 0.12 : 0.66}
+            />
+          </mesh>
+        )}
+      </group>
+    );
+  }
 
   return (
     <group>
-      {/* Core grounding trunk knot */}
-      <mesh position={[0, -4.85, 0]}>
-        <cylinderGeometry args={[0.38, 0.72, 1.85, 16]} />
+      <mesh geometry={mainGeo}>
         <meshStandardMaterial
-          color="#5C421E"
-          emissive="#8F652A"
-          emissiveIntensity={0.28}
-          roughness={0.65}
-          metalness={0.2}
+          map={layoutMode === "organic" ? barkTextures?.map ?? null : null}
+          bumpMap={layoutMode === "organic" ? barkTextures?.bumpMap ?? null : null}
+          bumpScale={0.06}
+          color={highlighted ? "#D6AC68" : "#8F6D45"}
+          emissive={highlighted ? "#D4A359" : "#4E3415"}
+          emissiveIntensity={highlighted ? 0.78 : dimmed ? 0.08 : 0.28}
+          roughness={highlighted ? 0.36 : 0.62}
+          metalness={highlighted ? 0.38 : 0.22}
           transparent
-          opacity={0.78}
+          opacity={highlighted ? 0.98 : dimmed ? 0.18 : 0.94}
         />
       </mesh>
-      {rootGeometries.map((geo, idx) => (
-        <mesh key={idx} geometry={geo}>
+
+      {/* Luminous bioluminescent golden sap vein spiraling up the limb */}
+      {veinGeo && (
+        <mesh geometry={veinGeo}>
           <meshStandardMaterial
-            color="#6E4E23"
-            emissive="#A67833"
-            emissiveIntensity={0.32}
-            roughness={0.55}
-            metalness={0.25}
+            color={highlighted ? "#FFF0C8" : "#E6C385"}
+            emissive="#E6C385"
+            emissiveIntensity={highlighted ? 1.9 : dimmed ? 0.06 : 0.72}
+            roughness={0.2}
+            metalness={0.4}
             transparent
-            opacity={0.62}
+            opacity={highlighted ? 0.96 : dimmed ? 0.08 : 0.56}
           />
         </mesh>
-      ))}
-      {/* Subtle bioluminescent ground aura */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -6.55, 0]}>
-        <ringGeometry args={[0.2, 6.2, 64]} />
-        <meshBasicMaterial
-          color="#D4A359"
-          transparent
-          opacity={0.07}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      )}
     </group>
   );
 }
 
 /**
- * Concentric phylogenetic rings shown in Radial "Tree of Life" mode.
+ * Intricate brass-astrolabe & phylogenetic rings for Radial "Tree of Life" mode.
  */
-function RadialRings({
+function RadialAstrolabe({
   visible,
   generations,
 }: {
@@ -174,9 +247,26 @@ function RadialRings({
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
+  const tickGeometry = useMemo(() => {
+    const pts: number[] = [];
+    const maxRadius =
+      generations.length <= 1 ? 2.4 : 3.2 + (generations.length - 1) * 3.15 + 1.2;
+
+    // 12 radial compass meridians
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const inner = 0.85;
+      pts.push(Math.cos(a) * inner, 0.72, Math.sin(a) * inner);
+      pts.push(Math.cos(a) * maxRadius, -0.55, Math.sin(a) * maxRadius);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    return geo;
+  }, [generations.length]);
+
   useFrame(({ clock }) => {
     if (groupRef.current && visible) {
-      groupRef.current.rotation.y = clock.getElapsedTime() * 0.015;
+      groupRef.current.rotation.y = clock.getElapsedTime() * 0.018;
     }
   });
 
@@ -184,19 +274,61 @@ function RadialRings({
 
   return (
     <group ref={groupRef}>
+      {/* Central luminous origin mandala */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.76, 0]}>
+        <ringGeometry args={[0.15, 0.78, 64]} />
+        <meshBasicMaterial
+          color="#D4A359"
+          transparent
+          opacity={0.14}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.77, 0]}>
+        <ringGeometry args={[0.76, 0.8, 64]} />
+        <meshBasicMaterial
+          color="#E6C385"
+          transparent
+          opacity={0.45}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Radial compass meridians */}
+      <lineSegments geometry={tickGeometry}>
+        <lineBasicMaterial
+          color="#D4A359"
+          transparent
+          opacity={0.12}
+          depthWrite={false}
+        />
+      </lineSegments>
+
+      {/* Concentric double-etched generational rings */}
       {generations.map((_, levelIndex) => {
         const radius = levelIndex === 0 ? 1.6 : 3.2 + levelIndex * 3.15;
         const y = -levelIndex * 0.45 + 0.76;
         return (
-          <mesh key={levelIndex} rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]}>
-            <ringGeometry args={[radius - 0.025, radius + 0.025, 96]} />
-            <meshBasicMaterial
-              color="#D4A359"
-              transparent
-              opacity={0.24 - levelIndex * 0.03}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
+          <group key={levelIndex} position={[0, y, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[radius - 0.03, radius + 0.03, 128]} />
+              <meshBasicMaterial
+                color="#E6C385"
+                transparent
+                opacity={0.32 - levelIndex * 0.04}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[radius - 0.14, radius - 0.12, 96]} />
+              <meshBasicMaterial
+                color="#D4A359"
+                transparent
+                opacity={0.14}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          </group>
         );
       })}
     </group>
@@ -204,6 +336,7 @@ function RadialRings({
 }
 
 export function OrganicBranches({
+  members,
   edges,
   positions,
   layoutMode,
@@ -212,13 +345,49 @@ export function OrganicBranches({
   generations,
 }: OrganicBranchesProps) {
   const hasSelection = Boolean(selectedId);
+  const minGen = generations[0] ?? 0;
+  const maxGen = generations[generations.length - 1] ?? 0;
+
+  // Dynamic positions of Generation 0 founding ancestors so the braided trunk connects directly into them
+  const rootAnchors = useMemo<Vec3[]>(() => {
+    return members
+      .filter((m) => m.generation === minGen)
+      .map((m) => positions[m.id])
+      .filter((p): p is Vec3 => Boolean(p));
+  }, [members, minGen, positions]);
 
   return (
     <group>
-      <RootNetwork visible={layoutMode === "organic"} />
-      <RadialRings visible={layoutMode === "radial"} generations={generations} />
+      {/* Mossy obsidian sanctuary floor */}
+      <SanctuaryGround
+        visible={layoutMode === "organic"}
+        dimmed={hasSelection}
+      />
 
-      {edges.map((edge) => {
+      {/* Sculpted braided trunk & multi-tier branching buttress roots */}
+      <TreeTrunkAndRoots
+        visible={layoutMode === "organic"}
+        rootAnchors={rootAnchors}
+        dimmed={hasSelection}
+      />
+
+      {/* Lush procedural twigs, 600+ fluttering botanical leaves & hanging willow light tendrils */}
+      <TreeCanopy
+        visible={layoutMode === "organic"}
+        members={members}
+        positions={positions}
+        maxGeneration={maxGen}
+        dimmed={hasSelection}
+      />
+
+      {/* Astrolabe rings for Radial "Tree of Life" mode */}
+      <RadialAstrolabe
+        visible={layoutMode === "radial"}
+        generations={generations}
+      />
+
+      {/* Tapered lineage limbs & double-helix partner vines */}
+      {edges.map((edge, idx) => {
         const from = positions[edge.fromId];
         const to = positions[edge.toId];
         if (!from || !to) return null;
@@ -229,14 +398,16 @@ export function OrganicBranches({
           directLineageIds.has(edge.toId);
 
         return (
-          <BranchTube
+          <BranchBough
             key={`${edge.id}-${layoutMode}`}
+            edgeId={edge.id}
             from={from}
             to={to}
             kind={edge.kind}
             layoutMode={layoutMode}
             highlighted={bothInLineage}
             dimmed={hasSelection && !bothInLineage}
+            seed={idx * 17 + 3}
           />
         );
       })}

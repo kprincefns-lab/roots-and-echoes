@@ -25,17 +25,19 @@ export function MemberNode({
   onSelect,
 }: MemberNodeProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
+  const outerRingRef = useRef<THREE.Mesh>(null);
+  const innerRingRef = useRef<THREE.Mesh>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
   // Smoothly interpolate node position when toggling Organic <-> Radial layout
-  // and add subtle living botanical sway.
+  // and add subtle living botanical sway & armillary brass ring motion.
   useFrame(({ clock }, delta) => {
     if (!groupRef.current) return;
     const t = clock.getElapsedTime();
     const phase = member.birthYear * 0.17;
-    const swayX = Math.sin(t * 0.55 + phase) * 0.06;
-    const swayY = Math.cos(t * 0.72 + phase) * 0.08;
+    const swayX = Math.sin(t * 0.55 + phase) * 0.055;
+    const swayY = Math.cos(t * 0.72 + phase) * 0.07;
 
     const target = new THREE.Vector3(
       targetPosition[0] + swayX,
@@ -45,33 +47,49 @@ export function MemberNode({
     const lerpFactor = Math.min(1, delta * 4.5);
     groupRef.current.position.lerp(target, lerpFactor);
 
-    if (ringRef.current) {
-      ringRef.current.rotation.z = t * (isSelected ? 0.55 : 0.2);
-      ringRef.current.rotation.x = Math.sin(t * 0.4 + phase) * 0.25;
+    if (outerRingRef.current) {
+      outerRingRef.current.rotation.z = t * (isSelected ? 0.55 : 0.22);
+      outerRingRef.current.rotation.x = Math.PI * 0.34 + Math.sin(t * 0.4 + phase) * 0.2;
+    }
+    if (innerRingRef.current) {
+      innerRingRef.current.rotation.y = -t * (isSelected ? 0.72 : 0.28);
+      innerRingRef.current.rotation.x = Math.PI * 0.62;
+    }
+    if (coreRef.current) {
+      const breathe = 1 + Math.sin(t * 2.1 + phase) * 0.06;
+      coreRef.current.scale.setScalar(breathe);
     }
   });
 
   const active = isSelected || hovered;
-  const orbRadius = isSelected ? 0.42 : hovered ? 0.37 : 0.31;
+  const orbRadius = isSelected ? 0.42 : hovered ? 0.37 : 0.3;
   const emissiveIntensity = isSelected
-    ? 2.1
+    ? 2.4
     : hovered
-      ? 1.5
+      ? 1.7
       : isHighlighted
-        ? 1.15
+        ? 1.25
         : isDimmed
-          ? 0.2
-          : 0.72;
-
-  const coreColor = isSelected
-    ? "#F6DFAC"
-    : isHighlighted || hovered
-      ? "#E6C385"
-      : "#D4A359";
+          ? 0.22
+          : 0.92;
 
   return (
     <group ref={groupRef} position={targetPosition}>
-      {/* Interactive luminous seed/orb */}
+      {/* Radiant inner amber heart-seed */}
+      <mesh ref={coreRef}>
+        <sphereGeometry args={[orbRadius * 0.56, 20, 20]} />
+        <meshStandardMaterial
+          color="#FFF3D4"
+          emissive="#F4CA7A"
+          emissiveIntensity={emissiveIntensity * 1.4}
+          roughness={0.15}
+          metalness={0.2}
+          transparent
+          opacity={isDimmed ? 0.35 : 0.98}
+        />
+      </mesh>
+
+      {/* Sculpted translucent amber-glass lantern shell */}
       <mesh
         onClick={(e) => {
           e.stopPropagation();
@@ -87,51 +105,76 @@ export function MemberNode({
           document.body.style.cursor = "auto";
         }}
       >
-        <sphereGeometry args={[orbRadius, 28, 28]} />
-        <meshStandardMaterial
-          color={coreColor}
-          emissive="#D4A359"
-          emissiveIntensity={emissiveIntensity}
-          roughness={0.22}
-          metalness={0.45}
+        <sphereGeometry args={[orbRadius, 32, 32]} />
+        <meshPhysicalMaterial
+          color={isSelected ? "#F6DFAC" : "#D4A359"}
+          emissive="#C69142"
+          emissiveIntensity={emissiveIntensity * 0.55}
+          roughness={0.16}
+          metalness={0.35}
+          clearcoat={0.85}
+          clearcoatRoughness={0.14}
           transparent
-          opacity={isDimmed ? 0.3 : 0.96}
+          opacity={isDimmed ? 0.28 : 0.84}
         />
       </mesh>
 
-      {/* Subtle atmospheric aura shell */}
+      {/* Warm atmospheric halo bloom */}
       <mesh>
-        <sphereGeometry args={[orbRadius * 1.55, 20, 20]} />
+        <sphereGeometry args={[orbRadius * 1.72, 20, 20]} />
         <meshBasicMaterial
-          color="#D4A359"
+          color="#E6C385"
           transparent
-          opacity={isSelected ? 0.22 : hovered ? 0.16 : isHighlighted ? 0.1 : 0.04}
+          opacity={
+            isSelected ? 0.22 : hovered ? 0.16 : isHighlighted ? 0.11 : 0.055
+          }
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
       </mesh>
 
-      {/* Orbital brass ring for selected or hovered member */}
+      {/* Subtle brass astrolabe armillary rings (echoing watchmaker heirloom motif) */}
+      <mesh ref={outerRingRef}>
+        <torusGeometry
+          args={[orbRadius * 1.48, active ? 0.018 : 0.011, 10, 48]}
+        />
+        <meshStandardMaterial
+          color={isSelected ? "#FCE8BE" : "#D4A359"}
+          emissive="#D4A359"
+          emissiveIntensity={isSelected ? 1.4 : hovered ? 0.95 : 0.38}
+          roughness={0.25}
+          metalness={0.78}
+          transparent
+          opacity={
+            isSelected ? 0.94 : hovered ? 0.78 : isDimmed ? 0.12 : 0.42
+          }
+        />
+      </mesh>
+
       {(active || isHighlighted) && (
-        <mesh ref={ringRef}>
-          <torusGeometry args={[orbRadius * 1.65, 0.018, 12, 48]} />
-          <meshBasicMaterial
-            color={isSelected ? "#F5E2BA" : "#D4A359"}
+        <mesh ref={innerRingRef}>
+          <torusGeometry args={[orbRadius * 1.78, 0.012, 10, 48]} />
+          <meshStandardMaterial
+            color="#F5DFB0"
+            emissive="#E6C385"
+            emissiveIntensity={isSelected ? 1.2 : 0.65}
+            roughness={0.22}
+            metalness={0.8}
             transparent
-            opacity={isSelected ? 0.88 : hovered ? 0.65 : 0.38}
+            opacity={isSelected ? 0.85 : 0.5}
           />
         </mesh>
       )}
 
       {/* Portrait medallion + sculptural glass label */}
       <Html
-        position={[0, orbRadius + 0.52, 0]}
+        position={[0, orbRadius + 0.54, 0]}
         center
         distanceFactor={14}
         zIndexRange={[20, 0]}
         style={{
           pointerEvents: "auto",
-          opacity: isDimmed ? 0.26 : 1,
+          opacity: isDimmed ? 0.24 : 1,
           transition: "opacity 320ms ease, transform 240ms ease",
         }}
       >

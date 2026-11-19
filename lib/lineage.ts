@@ -147,25 +147,25 @@ export function computeTreeLayouts(members: FamilyMember[]): ComputedTreeLayout 
     const count = ordered.length;
     const minGen = generations[0] ?? 0;
     const levelIndex = gen - minGen;
-    const baseY = -4.2 + levelIndex * 3.55;
-    const spreadRadius = levelIndex === 0 ? 1.55 : 2.8 + levelIndex * 2.1;
+    const baseY = -1.9 + levelIndex * 3.05;
+    const spreadRadius = levelIndex === 0 ? 1.5 : 2.9 + levelIndex * 2.15;
 
     ordered.forEach((member, idx) => {
       if (count === 1) {
         organic[member.id] = [0, baseY, 0];
       } else if (levelIndex === 0 && count === 2) {
         const sign = idx === 0 ? -1 : 1;
-        organic[member.id] = [sign * 1.45, baseY, sign * 0.25];
+        organic[member.id] = [sign * 1.55, baseY + (idx === 0 ? 0.1 : -0.05), sign * 0.35];
       } else {
-        // Organic horizontal fan with subtle volumetric Z curvature & gentle height variation
+        // Organic horizontal fan with sculpted volumetric Z curvature & arched dome crown
         const t = count > 1 ? idx / (count - 1) : 0.5;
         const centered = (t - 0.5) * 2; // -1 to 1
-        const x = centered * spreadRadius * 1.45;
-        // Arching canopy depth in Z so the tree feels lushly 3D from every angle
+        const x = centered * spreadRadius * 1.42;
         const waveZ =
-          Math.sin(centered * Math.PI * 1.15 + levelIndex * 0.9) * (1.2 + levelIndex * 0.55) +
-          (idx % 2 === 0 ? 0.35 : -0.35);
-        const archY = baseY + (1 - Math.abs(centered) * 0.45) * 0.55;
+          Math.sin(centered * Math.PI * 1.15 + levelIndex * 0.95) * (1.35 + levelIndex * 0.6) +
+          (idx % 2 === 0 ? 0.42 : -0.42);
+        const domeArch = (1 - centered * centered * 0.55) * (0.65 + levelIndex * 0.18);
+        const archY = baseY + domeArch;
         organic[member.id] = [x, archY, waveZ];
       }
     });

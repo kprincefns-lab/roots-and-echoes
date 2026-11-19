@@ -41,8 +41,8 @@ function CameraRig({
   const controlsRef = useRef<ComponentRef<typeof OrbitControls>>(null);
   const { camera } = useThree();
 
-  const desiredPos = useRef(new THREE.Vector3(0, 2.2, 20.5));
-  const desiredTarget = useRef(new THREE.Vector3(0, 1.2, 0));
+  const desiredPos = useRef(new THREE.Vector3(0, 1.8, 22.8));
+  const desiredTarget = useRef(new THREE.Vector3(0, 1.35, 0));
   const isAnimating = useRef(false);
 
   // Trigger smooth camera flight when selection, layout, or reset changes
@@ -53,7 +53,7 @@ function CameraRig({
       // in the open left-center canvas beside the right-side dossier drawer.
       if (layoutMode === "organic") {
         desiredTarget.current.set(x + 1.15, y, z);
-        desiredPos.current.set(x + 1.4, y + 1.2, z + 7.4);
+        desiredPos.current.set(x + 1.45, y + 1.15, z + 7.6);
       } else {
         desiredTarget.current.set(x + 1.0, y, z);
         desiredPos.current.set(x + 1.6, y + 5.6, z + 6.4);
@@ -63,11 +63,11 @@ function CameraRig({
     }
 
     if (layoutMode === "organic") {
-      desiredTarget.current.set(0, 1.2, 0);
-      desiredPos.current.set(0, 2.4, 20.5);
+      desiredTarget.current.set(0, 1.35, 0);
+      desiredPos.current.set(0, 1.9, 22.8);
     } else {
       desiredTarget.current.set(0, 0.2, 0);
-      desiredPos.current.set(0, 17.5, 14.5);
+      desiredPos.current.set(0, 17.8, 14.8);
     }
     isAnimating.current = true;
   }, [selectedPosition, layoutMode, resetSignal]);
@@ -98,14 +98,14 @@ function CameraRig({
       makeDefault
       enableDamping
       dampingFactor={0.055}
-      rotateSpeed={0.65}
+      rotateSpeed={0.62}
       zoomSpeed={0.85}
       panSpeed={0.65}
       minDistance={4.2}
-      maxDistance={38}
-      maxPolarAngle={Math.PI * 0.85}
+      maxDistance={40}
+      maxPolarAngle={Math.PI * 0.86}
       autoRotate={autoRotate && !selectedPosition}
-      autoRotateSpeed={0.38}
+      autoRotateSpeed={0.34}
       onStart={() => {
         // Yield immediately to user drag/zoom
         isAnimating.current = false;
@@ -141,8 +141,14 @@ export default function TreeCanvas({
     <div className="relative h-full w-full">
       <Canvas
         dpr={[1, 2]}
-        camera={{ position: [0, 2.4, 20.5], fov: 44, near: 0.1, far: 120 }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        camera={{ position: [0, 1.9, 22.8], fov: 44, near: 0.1, far: 130 }}
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.12,
+        }}
         onPointerMissed={() => {
           if (selectedMemberId) {
             onClearSelection();
@@ -150,33 +156,47 @@ export default function TreeCanvas({
         }}
       >
         <color attach="background" args={["#090D0B"]} />
-        <fog attach="fog" args={["#090D0B", 22, 54]} />
+        <fog attach="fog" args={["#090D0B", 24, 62]} />
 
-        {/* Warm obsidian-forest illumination */}
-        <ambientLight intensity={0.48} color="#DCE6DC" />
+        {/* Atmospheric archival 4-point obsidian-forest illumination */}
+        <hemisphereLight args={["#D7E4D8", "#16110A", 0.55]} />
+
+        {/* Warm subterranean golden root up-light accentuating bark flutes & buttress roots */}
         <pointLight
-          position={[0, -3.5, 2]}
-          intensity={34}
+          position={[0, -5.2, 2.4]}
+          intensity={44}
+          distance={24}
+          decay={1.55}
+          color="#E2AC5C"
+        />
+
+        {/* Warm sunlight / amber key light grazing the sculpted trunk & canopy */}
+        <directionalLight
+          position={[11, 13, 12]}
+          intensity={1.35}
+          color="#F7E3BA"
+        />
+
+        {/* Cool moonlit forest emerald rim light separating bark ridges from obsidian void */}
+        <directionalLight
+          position={[-12, 8, -10]}
+          intensity={0.85}
+          color="#6B9478"
+        />
+
+        {/* Soft crown glow inside the upper canopy */}
+        <pointLight
+          position={[0, 7.2, 1.5]}
+          intensity={26}
           distance={26}
           decay={1.6}
-          color="#D4A359"
-        />
-        <pointLight
-          position={[8, 9, 10]}
-          intensity={22}
-          distance={34}
-          decay={1.8}
-          color="#F5E2BA"
-        />
-        <directionalLight
-          position={[-10, 12, -8]}
-          intensity={0.55}
-          color="#8BA888"
+          color="#F0CA82"
         />
 
-        <AmbientPollen count={240} />
+        <AmbientPollen count={260} />
 
         <OrganicBranches
+          members={members}
           edges={layout.edges}
           positions={activePositions}
           layoutMode={layoutMode}
