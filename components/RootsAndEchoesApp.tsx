@@ -6,6 +6,7 @@ import {
   FamilyMember,
   MemoryPhoto,
   RelationshipLinkType,
+  SpiritAnimalType,
   TreeLayoutMode,
 } from "@/types/family";
 import { SEED_FAMILY } from "@/data/seedFamily";
@@ -159,6 +160,20 @@ export function RootsAndEchoesApp() {
           m.id === memberId ? { ...m, gallery: [photo, ...m.gallery] } : m
         )
       );
+    },
+    []
+  );
+
+  const handleUpdateSpiritAnimal = useCallback(
+    (memberId: string, animal: SpiritAnimalType | undefined) => {
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === memberId ? { ...m, spiritAnimal: animal } : m
+        )
+      );
+      if (animal) {
+        soundscape.playBranchPlanted();
+      }
     },
     []
   );
@@ -346,6 +361,7 @@ export function RootsAndEchoesApp() {
         onClose={handleClearSelection}
         onSelectMember={handleSelectMember}
         onAddMemoryPhoto={handleAddMemoryPhoto}
+        onUpdateSpiritAnimal={handleUpdateSpiritAnimal}
         onQuickAddRelative={handleQuickAddRelative}
       />
 

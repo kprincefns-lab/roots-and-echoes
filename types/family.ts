@@ -2,6 +2,26 @@ export type TreeLayoutMode = "organic" | "radial";
 
 export type RelationshipLinkType = "child" | "partner" | "parent";
 
+export type SpiritAnimalType = "panther" | "bird" | "owl";
+
+export const SPIRIT_ANIMAL_META: Record<
+  SpiritAnimalType,
+  { label: string; tagline: string }
+> = {
+  panther: {
+    label: "Panther of Light",
+    tagline: "Quiet strength & watchful grace",
+  },
+  bird: {
+    label: "Songbird of Light",
+    tagline: "Melody, renewal & open skies",
+  },
+  owl: {
+    label: "Owl of Light",
+    tagline: "Wisdom & nocturnal memory",
+  },
+};
+
 export interface LifeMilestone {
   year: number;
   title: string;
@@ -51,6 +71,7 @@ export interface FamilyMember {
   occupation?: string;
   generation: number;
   portraitUrl: string;
+  spiritAnimal?: SpiritAnimalType;
   parentIds: string[];
   partnerIds: string[];
   childrenIds: string[];

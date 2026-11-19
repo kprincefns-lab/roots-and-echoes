@@ -203,6 +203,7 @@ export default function TreeCanvas({
           selectedId={selectedMemberId}
           directLineageIds={directLineageIds}
           generations={layout.generations}
+          onSelectMember={onSelectMember}
         />
 
         {members.map((member) => {

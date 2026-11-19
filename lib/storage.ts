@@ -12,7 +12,22 @@ export function loadFamilyArchive(): FamilyMember[] {
     if (!raw) return SEED_FAMILY;
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed as FamilyMember[];
+      const members = parsed as FamilyMember[];
+      const hasAnySpirit = members.some((m) => Boolean(m.spiritAnimal));
+      if (!hasAnySpirit) {
+        const seedSpiritMap = new Map(
+          SEED_FAMILY.filter((s) => s.spiritAnimal).map((s) => [
+            s.id,
+            s.spiritAnimal,
+          ])
+        );
+        return members.map((m) =>
+          seedSpiritMap.has(m.id)
+            ? { ...m, spiritAnimal: seedSpiritMap.get(m.id) }
+            : m
+        );
+      }
+      return members;
     }
     return SEED_FAMILY;
   } catch {

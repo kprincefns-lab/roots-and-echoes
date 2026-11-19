@@ -8,10 +8,16 @@ import {
   HeartPulse,
   MapPin,
   MessageCircleHeart,
+  Sparkles,
   UserPlus,
   X,
 } from "lucide-react";
-import { FamilyMember, MemoryPhoto } from "@/types/family";
+import {
+  FamilyMember,
+  MemoryPhoto,
+  SPIRIT_ANIMAL_META,
+  SpiritAnimalType,
+} from "@/types/family";
 import {
   getGenerationLabel,
   getMemberLifespanLabel,
@@ -29,6 +35,10 @@ interface MemberDossierProps {
   onClose: () => void;
   onSelectMember: (id: string) => void;
   onAddMemoryPhoto: (memberId: string, photo: MemoryPhoto) => void;
+  onUpdateSpiritAnimal: (
+    memberId: string,
+    animal: SpiritAnimalType | undefined
+  ) => void;
   onQuickAddRelative: (memberId: string) => void;
 }
 
@@ -45,9 +55,11 @@ export function MemberDossier({
   onClose,
   onSelectMember,
   onAddMemoryPhoto,
+  onUpdateSpiritAnimal,
   onQuickAddRelative,
 }: MemberDossierProps) {
   const [activeTab, setActiveTab] = useState<DossierTab>("stories");
+  const [spiritMenuOpen, setSpiritMenuOpen] = useState(false);
 
   const byId = new Map(allMembers.map((m) => [m.id, m]));
   const parents = member
@@ -136,9 +148,78 @@ export function MemberDossier({
               </div>
             </div>
 
-            {member.occupation && (
-              <p className="mt-3 text-xs text-[#A6A095]">{member.occupation}</p>
-            )}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              {member.occupation ? (
+                <p className="text-xs text-[#A6A095]">{member.occupation}</p>
+              ) : (
+                <span />
+              )}
+
+              {/* Spirit Animal of Light Badge / Switcher */}
+              <button
+                type="button"
+                onClick={() => setSpiritMenuOpen((v) => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition cursor-pointer ${
+                  member.spiritAnimal
+                    ? "border border-[#E6C385]/45 bg-[#D4A359]/14 text-[#F2DCAA] hover:bg-[#D4A359]/22"
+                    : "border border-[#F5F2EB]/12 bg-[#0B110E]/70 text-[#A6A095] hover:border-[#D4A359]/40 hover:text-[#E6C385]"
+                }`}
+              >
+                <Sparkles className="h-3 w-3 text-[#E6C385]" />
+                <span>
+                  {member.spiritAnimal
+                    ? SPIRIT_ANIMAL_META[member.spiritAnimal].label
+                    : "Choose Spirit Animal"}
+                </span>
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {spiritMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#D4A359]/22 bg-[#0B110E]/85 p-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateSpiritAnimal(member.id, undefined);
+                        setSpiritMenuOpen(false);
+                      }}
+                      className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer ${
+                        !member.spiritAnimal
+                          ? "bg-[#D4A359] text-[#090D0B] font-semibold"
+                          : "border border-[#F5F2EB]/12 text-[#A6A095] hover:text-[#F5F2EB]"
+                      }`}
+                    >
+                      None
+                    </button>
+                    {(
+                      Object.keys(SPIRIT_ANIMAL_META) as SpiritAnimalType[]
+                    ).map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          onUpdateSpiritAnimal(member.id, key);
+                          setSpiritMenuOpen(false);
+                        }}
+                        className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer ${
+                          member.spiritAnimal === key
+                            ? "bg-[#D4A359] text-[#090D0B] font-semibold"
+                            : "border border-[#D4A359]/25 bg-[#D4A359]/8 text-[#E6C385] hover:bg-[#D4A359]/18"
+                        }`}
+                      >
+                        {SPIRIT_ANIMAL_META[key].label}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Clickable Relationship Badges */}
             {(parents.length > 0 || partners.length > 0 || children.length > 0) && (

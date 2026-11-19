@@ -7,12 +7,14 @@ import { BranchEdge, Vec3 } from "@/lib/lineage";
 import { FamilyMember, TreeLayoutMode } from "@/types/family";
 import {
   createCoiledVeinCurve,
+  createLineageBranchCurve,
   createTaperedOrganicTube,
 } from "@/lib/treeGeometry";
 import { getBarkTextures } from "@/lib/treeTextures";
 import { SanctuaryGround } from "./SanctuaryGround";
 import { TreeTrunkAndRoots } from "./TreeTrunkAndRoots";
 import { TreeCanopy } from "./TreeCanopy";
+import { SpiritAnimals } from "./SpiritAnimals";
 
 interface OrganicBranchesProps {
   members: FamilyMember[];
@@ -22,6 +24,7 @@ interface OrganicBranchesProps {
   selectedId: string | null;
   directLineageIds: Set<string>;
   generations: number[];
+  onSelectMember: (id: string) => void;
 }
 
 interface BranchBoughProps {
@@ -89,29 +92,14 @@ function BranchBough({
     }
 
     if (layoutMode === "organic") {
-      // Sinuous upward botanical bough with organic lateral elbow and subtle Z swell
-      const dy = end.y - start.y;
-      const lateralBend = ((seed % 5) - 2) * 0.14;
-      const ctrl1 = new THREE.Vector3(
-        start.x + (end.x - start.x) * 0.24 + lateralBend,
-        start.y + dy * 0.44,
-        start.z + (end.z - start.z) * 0.22 + (seed % 2 === 0 ? 0.22 : -0.22)
-      );
-      const ctrl2 = new THREE.Vector3(
-        start.x + (end.x - start.x) * 0.72 - lateralBend * 0.6,
-        start.y + dy * 0.78,
-        start.z + (end.z - start.z) * 0.76
-      );
-      const curve = new THREE.CatmullRomCurve3([start, ctrl1, ctrl2, end]);
+      const {
+        curve,
+        radiusStart: baseStart,
+        radiusEnd: baseEnd,
+      } = createLineageBranchCurve(from, to, "organic", seed);
 
-      // Realistic botanical tapering: thick lower boughs, slender upper limbs
-      const elevationRatio = THREE.MathUtils.clamp((start.y + 2.5) / 11, 0, 1);
-      const radiusStart =
-        THREE.MathUtils.lerp(0.18, 0.075, elevationRatio) *
-        (highlighted ? 1.14 : 1);
-      const radiusEnd =
-        THREE.MathUtils.lerp(0.095, 0.04, elevationRatio) *
-        (highlighted ? 1.14 : 1);
+      const radiusStart = baseStart * (highlighted ? 1.14 : 1);
+      const radiusEnd = baseEnd * (highlighted ? 1.14 : 1);
 
       const main = createTaperedOrganicTube({
         curve,
@@ -149,9 +137,7 @@ function BranchBough({
     }
 
     // Radial "Tree of Life" graceful phylogenetic ribbon arc
-    const mid = start.clone().lerp(end, 0.5);
-    mid.y += 0.62;
-    const curve = new THREE.CatmullRomCurve3([start, mid, end]);
+    const { curve } = createLineageBranchCurve(from, to, "radial", seed);
     const rStart = highlighted ? 0.072 : 0.048;
     const rEnd = highlighted ? 0.044 : 0.026;
     return {
@@ -343,6 +329,7 @@ export function OrganicBranches({
   selectedId,
   directLineageIds,
   generations,
+  onSelectMember,
 }: OrganicBranchesProps) {
   const hasSelection = Boolean(selectedId);
   const minGen = generations[0] ?? 0;
@@ -378,6 +365,17 @@ export function OrganicBranches({
         positions={positions}
         maxGeneration={maxGen}
         dimmed={hasSelection}
+      />
+
+      {/* Ethereal animals made of light resting on selected family branches */}
+      <SpiritAnimals
+        members={members}
+        edges={edges}
+        positions={positions}
+        layoutMode={layoutMode}
+        selectedId={selectedId}
+        directLineageIds={directLineageIds}
+        onSelectMember={onSelectMember}
       />
 
       {/* Astrolabe rings for Radial "Tree of Life" mode */}

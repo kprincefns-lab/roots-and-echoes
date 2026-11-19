@@ -17,6 +17,8 @@ import {
   FamilyMember,
   MemoryPhoto,
   RelationshipLinkType,
+  SPIRIT_ANIMAL_META,
+  SpiritAnimalType,
 } from "@/types/family";
 import { createArchivalPortrait } from "@/lib/portraits";
 
@@ -133,6 +135,7 @@ export function AddMemberWizard({
   const [adviceForFuture, setAdviceForFuture] = useState("");
   const [bloodType, setBloodType] = useState("");
   const [healthNotes, setHealthNotes] = useState("");
+  const [spiritAnimal, setSpiritAnimal] = useState<SpiritAnimalType | "">("");
 
   // Re-crop portrait whenever zoom changes
   useEffect(() => {
@@ -166,6 +169,7 @@ export function AddMemberWizard({
     setAdviceForFuture("");
     setBloodType("");
     setHealthNotes("");
+    setSpiritAnimal("");
   };
 
   const handlePortraitSelect = (file: File | undefined) => {
@@ -259,6 +263,7 @@ export function AddMemberWizard({
       occupation: occupation.trim() || undefined,
       generation,
       portraitUrl: finalPortrait,
+      spiritAnimal: spiritAnimal || undefined,
       parentIds: [],
       partnerIds: [],
       childrenIds: [],
@@ -770,6 +775,47 @@ export function AddMemberWizard({
                         className="mt-1.5 w-full rounded-xl border border-[#D4A359]/22 bg-[#090D0B]/75 px-3.5 py-2.5 text-sm text-[#F5F2EB] placeholder:text-[#A6A095]/50 focus:border-[#D4A359] focus:outline-none"
                       />
                     </label>
+
+                    {/* Optional Branch Spirit Animal Selector */}
+                    <div className="rounded-2xl border border-[#D4A359]/20 bg-[#0B110E]/65 p-3.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-[#E6C385]">
+                          Branch Spirit Guardian (Optional)
+                        </span>
+                        <span className="text-[10.5px] text-[#A6A095]">
+                          Perches on their 3D limb
+                        </span>
+                      </div>
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSpiritAnimal("")}
+                          className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition cursor-pointer ${
+                            spiritAnimal === ""
+                              ? "bg-[#D4A359] text-[#090D0B]"
+                              : "border border-[#F5F2EB]/15 text-[#A6A095] hover:border-[#D4A359]/45 hover:text-[#F5F2EB]"
+                          }`}
+                        >
+                          None
+                        </button>
+                        {(
+                          Object.keys(SPIRIT_ANIMAL_META) as SpiritAnimalType[]
+                        ).map((key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setSpiritAnimal(key)}
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition cursor-pointer ${
+                              spiritAnimal === key
+                                ? "bg-[#D4A359] text-[#090D0B]"
+                                : "border border-[#D4A359]/25 bg-[#D4A359]/8 text-[#E6C385] hover:bg-[#D4A359]/18"
+                            }`}
+                          >
+                            {SPIRIT_ANIMAL_META[key].label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>

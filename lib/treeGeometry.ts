@@ -295,3 +295,47 @@ export function createCoiledVeinCurve(
   }
   return new THREE.CatmullRomCurve3(pts);
 }
+
+/**
+ * Shared spline generator for parent->child lineage limbs so both BranchBough
+ * and perched SpiritAnimals rest on the exact same 3D wood surface.
+ */
+export function createLineageBranchCurve(
+  from: [number, number, number],
+  to: [number, number, number],
+  layoutMode: "organic" | "radial",
+  seed: number
+): {
+  curve: THREE.CatmullRomCurve3;
+  radiusStart: number;
+  radiusEnd: number;
+} {
+  const start = new THREE.Vector3(...from);
+  const end = new THREE.Vector3(...to);
+
+  if (layoutMode === "organic") {
+    const dy = end.y - start.y;
+    const lateralBend = ((seed % 5) - 2) * 0.14;
+    const ctrl1 = new THREE.Vector3(
+      start.x + (end.x - start.x) * 0.24 + lateralBend,
+      start.y + dy * 0.44,
+      start.z + (end.z - start.z) * 0.22 + (seed % 2 === 0 ? 0.22 : -0.22)
+    );
+    const ctrl2 = new THREE.Vector3(
+      start.x + (end.x - start.x) * 0.72 - lateralBend * 0.6,
+      start.y + dy * 0.78,
+      start.z + (end.z - start.z) * 0.76
+    );
+    const curve = new THREE.CatmullRomCurve3([start, ctrl1, ctrl2, end]);
+    const elevationRatio = THREE.MathUtils.clamp((start.y + 2.5) / 11, 0, 1);
+    const radiusStart = THREE.MathUtils.lerp(0.18, 0.075, elevationRatio);
+    const radiusEnd = THREE.MathUtils.lerp(0.095, 0.04, elevationRatio);
+    return { curve, radiusStart, radiusEnd };
+  }
+
+  const mid = start.clone().lerp(end, 0.5);
+  mid.y += 0.62;
+  const curve = new THREE.CatmullRomCurve3([start, mid, end]);
+  return { curve, radiusStart: 0.048, radiusEnd: 0.026 };
+}
+
