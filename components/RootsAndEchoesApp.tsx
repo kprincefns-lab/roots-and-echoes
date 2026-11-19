@@ -18,6 +18,7 @@ import {
   resetFamilyArchive,
   saveFamilyArchive,
 } from "@/lib/storage";
+import { soundscape } from "@/lib/soundscape";
 import { TreeViewport } from "@/components/tree/TreeViewport";
 import { TopBar } from "@/components/hud/TopBar";
 import { BottomControls } from "@/components/hud/BottomControls";
@@ -35,11 +36,22 @@ export function RootsAndEchoesApp() {
   const [autoRotate, setAutoRotate] = useState(true);
   const [resetSignal, setResetSignal] = useState(0);
 
+  const [ambientPlaying, setAmbientPlaying] = useState(false);
+  const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [audioVolume, setAudioVolume] = useState(0.62);
+
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardSession, setWizardSession] = useState(0);
   const [wizardLinkedId, setWizardLinkedId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showOnboardingHint, setShowOnboardingHint] = useState(true);
+
+  // Stop ambient audio gracefully on unmount
+  useEffect(() => {
+    return () => {
+      soundscape.stopAmbient();
+    };
+  }, []);
 
   // Hydrate persisted archive from localStorage after mount (SSR-safe)
   useEffect(() => {
@@ -65,6 +77,7 @@ export function RootsAndEchoesApp() {
       } else if (settingsOpen) {
         setSettingsOpen(false);
       } else if (selectedMemberId) {
+        soundscape.playDrawerClose();
         setSelectedMemberId(null);
       }
     };
@@ -92,13 +105,44 @@ export function RootsAndEchoesApp() {
     [selectedMemberId, members]
   );
 
-  const handleSelectMember = useCallback((id: string) => {
-    setSelectedMemberId(id);
-    setActiveGeneration(null);
-    setShowOnboardingHint(false);
+  const handleToggleAmbient = useCallback(() => {
+    if (soundscape.isAmbientPlaying()) {
+      soundscape.stopAmbient();
+      setAmbientPlaying(false);
+    } else {
+      soundscape.startAmbient();
+      setAmbientPlaying(true);
+    }
   }, []);
 
+  const handleToggleSfx = useCallback(() => {
+    setSfxEnabled((prev) => {
+      const next = !prev;
+      soundscape.setSfxEnabled(next);
+      return next;
+    });
+  }, []);
+
+  const handleVolumeChange = useCallback((vol: number) => {
+    setAudioVolume(vol);
+    soundscape.setVolume(vol);
+  }, []);
+
+  const handleSelectMember = useCallback(
+    (id: string) => {
+      const target = members.find((m) => m.id === id);
+      if (target) {
+        soundscape.playNodeSelect(target.generation, target.birthYear);
+      }
+      setSelectedMemberId(id);
+      setActiveGeneration(null);
+      setShowOnboardingHint(false);
+    },
+    [members]
+  );
+
   const handleClearSelection = useCallback(() => {
+    soundscape.playDrawerClose();
     setSelectedMemberId(null);
   }, []);
 
@@ -187,7 +231,8 @@ export function RootsAndEchoesApp() {
         return normalizeGenerations([...updated, linkedNew]);
       });
 
-      // Fly straight to the newly added family member
+      // Celebratory harp arpeggio & fly straight to the newly added family member
+      soundscape.playBranchPlanted();
       setSelectedMemberId(newMember.id);
       setShowOnboardingHint(false);
     },
@@ -245,6 +290,7 @@ export function RootsAndEchoesApp() {
         layoutMode={layoutMode}
         activeGeneration={activeGeneration}
         onLayoutChange={(mode) => {
+          soundscape.playLayoutShift(mode);
           setLayoutMode(mode);
           setShowOnboardingHint(false);
         }}
@@ -267,13 +313,13 @@ export function RootsAndEchoesApp() {
             className="pointer-events-none fixed bottom-20 left-1/2 z-20 -translate-x-1/2"
           >
             <div className="glass-panel rounded-full px-4 py-1.5 text-[11px] tracking-wide text-[#F5F2EB]/80 whitespace-nowrap">
-              Click any glowing node to open their dossier · Drag to orbit · Scroll to zoom
+              Click any glowing node to open their dossier · Toggle Ambiance for chamber strings
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Bottom Camera Controls, Lineage Spotlight & "+ Add to the Tree" FAB */}
+      {/* Bottom Camera Controls, Chamber Audio, Lineage Spotlight & "+ Add to the Tree" FAB */}
       <BottomControls
         memberCount={members.length}
         generationCount={generations.length}
@@ -281,7 +327,13 @@ export function RootsAndEchoesApp() {
         selectedMember={selectedMember}
         lineageCount={directLineageIds.size}
         autoRotate={autoRotate}
+        ambientPlaying={ambientPlaying}
+        sfxEnabled={sfxEnabled}
+        audioVolume={audioVolume}
         onToggleAutoRotate={() => setAutoRotate((v) => !v)}
+        onToggleAmbient={handleToggleAmbient}
+        onToggleSfx={handleToggleSfx}
+        onVolumeChange={handleVolumeChange}
         onResetCamera={handleResetCamera}
         onClearSelection={handleClearSelection}
         onOpenWizard={handleOpenWizardDefault}

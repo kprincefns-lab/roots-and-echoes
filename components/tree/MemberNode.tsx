@@ -6,6 +6,7 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { FamilyMember } from "@/types/family";
 import { Vec3 } from "@/lib/lineage";
+import { soundscape } from "@/lib/soundscape";
 
 interface MemberNodeProps {
   member: FamilyMember;
@@ -98,6 +99,7 @@ export function MemberNode({
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
+          soundscape.playNodeHover(member.generation);
           document.body.style.cursor = "pointer";
         }}
         onPointerOut={() => {
