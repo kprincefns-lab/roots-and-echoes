@@ -103,6 +103,9 @@ export interface AccessRequestRecord {
   memberName: string;
   requesterEmail: string;
   requesterName?: string | null;
+  requesterAvatarUrl?: string | null;
+  requesterTreeMemberId?: string | null;
+  requesterTreeMemberName?: string | null;
   note?: string | null;
   requestType: AccessRequestType;
   status: AccessRequestStatus;

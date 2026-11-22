@@ -1,6 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+export interface AuthenticatedFamilyUser {
+  email: string;
+  userId: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+}
+
 export async function createSupabaseServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const anonKey =
@@ -33,10 +40,7 @@ export async function createSupabaseServerClient() {
   });
 }
 
-export async function getAuthenticatedSession(): Promise<{
-  email: string;
-  userId: string;
-} | null> {
+export async function getAuthenticatedSession(): Promise<AuthenticatedFamilyUser | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
 
@@ -49,8 +53,20 @@ export async function getAuthenticatedSession(): Promise<{
     return null;
   }
 
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const rawName =
+    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+    (typeof meta.name === "string" && meta.name.trim()) ||
+    null;
+  const rawAvatar =
+    (typeof meta.avatar_url === "string" && meta.avatar_url.trim()) ||
+    (typeof meta.picture === "string" && meta.picture.trim()) ||
+    null;
+
   return {
     email: user.email.trim().toLowerCase(),
     userId: user.id,
+    fullName: rawName,
+    avatarUrl: rawAvatar,
   };
 }

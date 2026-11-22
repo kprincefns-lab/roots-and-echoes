@@ -10,7 +10,13 @@ export async function GET(request: NextRequest) {
 
   if (!session) {
     return NextResponse.json(
-      { authenticated: false, email: null, isCurator: false },
+      {
+        authenticated: false,
+        email: null,
+        fullName: null,
+        avatarUrl: null,
+        isCurator: false,
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   }
@@ -19,6 +25,8 @@ export async function GET(request: NextRequest) {
     {
       authenticated: true,
       email: session.email,
+      fullName: session.fullName,
+      avatarUrl: session.avatarUrl,
       isCurator,
     },
     { headers: { "Cache-Control": "no-store" } }

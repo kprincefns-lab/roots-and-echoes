@@ -44,6 +44,23 @@ export async function GET(request: NextRequest) {
       .map((m) => m.id)
   );
 
+  // Cross-reference requester emails to their profile on the tree (owner_email priority)
+  const emailToTreeMemberMap = new Map<string, { id: string; name: string }>();
+  for (const m of members) {
+    const fullName = `${m.firstName} ${m.lastName}`;
+    if (m.ownerEmail) {
+      emailToTreeMemberMap.set(m.ownerEmail.toLowerCase(), {
+        id: m.id,
+        name: fullName,
+      });
+    } else if (m.submittedBy && !emailToTreeMemberMap.has(m.submittedBy.toLowerCase())) {
+      emailToTreeMemberMap.set(m.submittedBy.toLowerCase(), {
+        id: m.id,
+        name: fullName,
+      });
+    }
+  }
+
   const { data: reqRows, error: reqErr } = await supabase
     .from("access_requests")
     .select("*")
@@ -54,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 
   const all = ((reqRows ?? []) as AccessRequestRow[]).map((r) =>
-    rowToAccessRequest(r, memberNameMap)
+    rowToAccessRequest(r, memberNameMap, emailToTreeMemberMap)
   );
 
   const incoming = isCurator
@@ -95,7 +112,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       memberId?: string;
-      requesterName?: string;
       note?: string;
       requestType?: AccessRequestType;
     };
@@ -109,14 +125,15 @@ export async function POST(request: NextRequest) {
 
     const requestType: AccessRequestType =
       body.requestType === "claim" ? "claim" : "view";
+    const cleanNote = body.note?.trim() ?? "";
 
-    const { data: targetMember, error: memErr } = await supabase
-      .from("family_members")
-      .select("id, owner_email")
-      .eq("id", body.memberId)
-      .single();
+    const { members, error: memErr } = await fetchAllFamilyMembers(supabase);
+    if (memErr) {
+      return NextResponse.json({ error: memErr }, { status: 500 });
+    }
 
-    if (memErr || !targetMember) {
+    const targetMember = members.find((m) => m.id === body.memberId);
+    if (!targetMember) {
       return NextResponse.json(
         { error: "Family member not found." },
         { status: 404 }
@@ -125,8 +142,7 @@ export async function POST(request: NextRequest) {
 
     if (
       requestType === "claim" &&
-      targetMember.owner_email &&
-      String(targetMember.owner_email).toLowerCase() === session.email
+      targetMember.ownerEmail?.toLowerCase() === session.email
     ) {
       return NextResponse.json(
         { error: "You already own this profile." },
@@ -134,14 +150,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Require a brief relationship note if requester is not yet listed on the tree
+    const requesterIsOnTree = members.some(
+      (m) => m.ownerEmail?.toLowerCase() === session.email
+    );
+    if (!requesterIsOnTree && !cleanNote) {
+      return NextResponse.json(
+        {
+          error:
+            "Since you aren't listed on the tree yet, please add a short relationship note (e.g., \"Aunt Linda's son\") so the profile owner knows who you are.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Always pull requester identity strictly from authenticated Google session
     const { error: upsertErr } = await supabase
       .from("access_requests")
       .upsert(
         {
           member_id: body.memberId,
           requester_email: session.email,
-          requester_name: body.requesterName?.trim() || null,
-          note: body.note?.trim() || null,
+          requester_name: session.fullName,
+          requester_avatar_url: session.avatarUrl,
+          note: cleanNote || null,
           request_type: requestType,
           status: "pending",
         },
@@ -190,7 +222,10 @@ export async function PATCH(request: NextRequest) {
       (body.decision !== "approved" && body.decision !== "declined")
     ) {
       return NextResponse.json(
-        { error: "Valid requestId and decision ('approved' or 'declined') are required." },
+        {
+          error:
+            "Valid requestId and decision ('approved' or 'declined') are required.",
+        },
         { status: 400 }
       );
     }
@@ -230,18 +265,23 @@ export async function PATCH(request: NextRequest) {
     if (typedReq.request_type === "claim") {
       if (!isCurator) {
         return NextResponse.json(
-          { error: "Admin Curator Code required to approve or decline ownership claims." },
+          {
+            error:
+              "Admin Curator Code required to approve or decline ownership claims.",
+          },
           { status: 403 }
         );
       }
     } else if (!isCurator && !isOwner) {
       return NextResponse.json(
-        { error: "Only the profile owner or Admin Curator can respond to this request." },
+        {
+          error:
+            "Only the profile owner or Admin Curator can respond to this request.",
+        },
         { status: 403 }
       );
     }
 
-    // Apply approval effect on public.family_members
     if (body.decision === "approved") {
       if (typedReq.request_type === "claim") {
         const { error: claimErr } = await supabase

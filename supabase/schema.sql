@@ -68,6 +68,7 @@ create table if not exists public.access_requests (
   member_id text not null references public.family_members(id) on delete cascade,
   requester_email text not null,
   requester_name text,
+  requester_avatar_url text,
   note text,
   request_type text not null default 'view' check (request_type in ('view', 'claim')),
   status text not null default 'pending' check (status in ('pending', 'approved', 'declined')),
@@ -76,6 +77,7 @@ create table if not exists public.access_requests (
 );
 
 alter table public.access_requests add column if not exists request_type text not null default 'view';
+alter table public.access_requests add column if not exists requester_avatar_url text;
 
 create index if not exists idx_access_requests_member_status
   on public.access_requests (member_id, status);

@@ -193,15 +193,6 @@ export function RootsAndEchoesApp() {
     return () => window.cancelAnimationFrame(frame);
   }, [fetchLiveArchive, fetchRequests]);
 
-  const handleAuthenticated = useCallback(
-    (email: string) => {
-      setViewerEmail(email);
-      void fetchLiveArchive();
-      void fetchRequests();
-    },
-    [fetchLiveArchive, fetchRequests]
-  );
-
   const handleCuratorCodeChange = useCallback(
     (code: string) => {
       setCuratorCode(code);
@@ -787,8 +778,12 @@ export function RootsAndEchoesApp() {
   }
 
   if (!viewerEmail) {
-    return <FamilyGate onAuthenticated={handleAuthenticated} />;
+    return <FamilyGate />;
   }
+
+  const viewerIsOnTree = members.some(
+    (m) => m.ownerEmail?.toLowerCase() === viewerEmail.toLowerCase()
+  );
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#090D0B]">
@@ -934,6 +929,7 @@ export function RootsAndEchoesApp() {
       <MemberDossier
         member={selectedMember}
         allMembers={members}
+        viewerIsOnTree={viewerIsOnTree}
         onClose={handleClearSelection}
         onSelectMember={handleSelectMember}
         onAddMemoryPhoto={handleAddMemoryPhoto}

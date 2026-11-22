@@ -190,90 +190,136 @@ export function RequestsDrawer({
                       No incoming access requests yet. When relatives request to view a profile you own, their requests appear here.
                     </div>
                   ) : (
-                    incoming.map((req) => (
-                      <div
-                        key={req.id}
-                        className="rounded-2xl border border-[#D4A359]/22 bg-[#0B110E]/80 p-4 space-y-2.5"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-editorial text-lg text-[#F5F2EB]">
-                                {req.memberName}
-                              </span>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider ${
-                                  req.requestType === "claim"
-                                    ? "bg-amber-500/20 text-amber-200"
-                                    : "bg-[#D4A359]/15 text-[#E6C385]"
-                                }`}
-                              >
-                                {req.requestType === "claim"
-                                  ? "Ownership Claim"
-                                  : "View Request"}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-[#A6A095]">
-                              From{" "}
-                              <span className="text-[#F5F2EB]">
-                                {req.requesterName || req.requesterEmail}
-                              </span>{" "}
-                              ({req.requesterEmail})
-                            </p>
-                          </div>
+                    incoming.map((req) => {
+                      const displayName =
+                        req.requesterName || req.requesterEmail.split("@")[0];
+                      const reqInitials = displayName
+                        .split(/\s+/)
+                        .slice(0, 2)
+                        .map((s) => s[0] ?? "")
+                        .join("")
+                        .toUpperCase();
 
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${
-                              req.status === "approved"
-                                ? "bg-emerald-500/18 text-emerald-300"
-                                : req.status === "declined"
-                                  ? "bg-red-500/18 text-red-300"
-                                  : "bg-[#D4A359]/18 text-[#E6C385]"
-                            }`}
-                          >
-                            {req.status}
-                          </span>
-                        </div>
-
-                        {req.note && (
-                          <p className="rounded-xl bg-[#090D0B]/70 px-3 py-2 text-xs italic text-[#F5F2EB]/85">
-                            &ldquo;{req.note}&rdquo;
-                          </p>
-                        )}
-
-                        {req.status === "pending" && (
-                          <div className="flex items-center gap-2 pt-1">
-                            <button
-                              type="button"
-                              disabled={busyId === req.id}
-                              onClick={() =>
-                                void handleDecision(req.id, "approved")
-                              }
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#D4A359] px-3 py-1.5 text-xs font-semibold text-[#090D0B] transition hover:bg-[#E6C385] disabled:opacity-50 cursor-pointer"
-                            >
-                              {busyId === req.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      return (
+                        <div
+                          key={req.id}
+                          className="rounded-2xl border border-[#D4A359]/22 bg-[#0B110E]/80 p-4 space-y-3"
+                        >
+                          {/* Requester Identity Header: Google Photo, Full Name, Email */}
+                          <div className="flex items-start justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {req.requesterAvatarUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={req.requesterAvatarUrl}
+                                  alt={displayName}
+                                  referrerPolicy="no-referrer"
+                                  className="h-10 w-10 shrink-0 rounded-full border border-[#D4A359]/45 object-cover"
+                                />
                               ) : (
-                                <Check className="h-3.5 w-3.5" />
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#D4A359]/35 bg-[#121B16] font-editorial text-sm text-[#E6C385]">
+                                  {reqInitials || "?"}
+                                </span>
                               )}
-                              {req.requestType === "claim"
-                                ? "Transfer Ownership"
-                                : "Approve Access"}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busyId === req.id}
-                              onClick={() =>
-                                void handleDecision(req.id, "declined")
-                              }
-                              className="inline-flex items-center justify-center gap-1 rounded-full border border-[#F5F2EB]/15 px-3.5 py-1.5 text-xs text-[#A6A095] transition hover:border-red-400/45 hover:text-red-300 disabled:opacity-50 cursor-pointer"
+
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-[#F5F2EB]">
+                                  {displayName}
+                                </div>
+                                <div className="truncate text-[11px] text-[#A6A095]">
+                                  {req.requesterEmail}
+                                </div>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${
+                                req.status === "approved"
+                                  ? "bg-emerald-500/18 text-emerald-300"
+                                  : req.status === "declined"
+                                    ? "bg-red-500/18 text-red-300"
+                                    : "bg-[#D4A359]/18 text-[#E6C385]"
+                              }`}
                             >
-                              Decline
-                            </button>
+                              {req.status}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))
+
+                          {/* Tree Cross-Reference Badge */}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {req.requesterTreeMemberName ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (req.requesterTreeMemberId) {
+                                    onSelectMember(req.requesterTreeMemberId);
+                                    onClose();
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-2.5 py-0.5 text-[10.5px] font-medium text-emerald-200 transition hover:bg-emerald-500/20 cursor-pointer"
+                              >
+                                <UserCheck className="h-3 w-3 text-emerald-400" />
+                                Listed on Tree as: {req.requesterTreeMemberName}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-[#F5F2EB]/12 bg-[#090D0B]/70 px-2.5 py-0.5 text-[10.5px] text-[#A6A095]">
+                                New relative — not yet on tree
+                              </span>
+                            )}
+
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider ${
+                                req.requestType === "claim"
+                                  ? "bg-amber-500/20 text-amber-200"
+                                  : "bg-[#D4A359]/15 text-[#E6C385]"
+                              }`}
+                            >
+                              {req.requestType === "claim"
+                                ? `Claiming ${req.memberName}`
+                                : `Requesting ${req.memberName}`}
+                            </span>
+                          </div>
+
+                          {req.note && (
+                            <p className="rounded-xl border border-[#D4A359]/15 bg-[#090D0B]/70 px-3 py-2 text-xs italic text-[#F5F2EB]/90">
+                              &ldquo;{req.note}&rdquo;
+                            </p>
+                          )}
+
+                          {req.status === "pending" && (
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                type="button"
+                                disabled={busyId === req.id}
+                                onClick={() =>
+                                  void handleDecision(req.id, "approved")
+                                }
+                                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#D4A359] px-3 py-1.5 text-xs font-semibold text-[#090D0B] transition hover:bg-[#E6C385] disabled:opacity-50 cursor-pointer"
+                              >
+                                {busyId === req.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Check className="h-3.5 w-3.5" />
+                                )}
+                                {req.requestType === "claim"
+                                  ? "Transfer Ownership"
+                                  : "Approve Access"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyId === req.id}
+                                onClick={() =>
+                                  void handleDecision(req.id, "declined")
+                                }
+                                className="inline-flex items-center justify-center gap-1 rounded-full border border-[#F5F2EB]/15 px-3.5 py-1.5 text-xs text-[#A6A095] transition hover:border-red-400/45 hover:text-red-300 disabled:opacity-50 cursor-pointer"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </>
               )}

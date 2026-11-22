@@ -43,6 +43,7 @@ type DossierTab = "stories" | "beliefs" | "health" | "echo";
 interface MemberDossierProps {
   member: FamilyMember | null;
   allMembers: FamilyMember[];
+  viewerIsOnTree: boolean;
   onClose: () => void;
   onSelectMember: (id: string) => void;
   onAddMemoryPhoto: (
@@ -76,6 +77,7 @@ const TABS: Array<{ id: DossierTab; label: string; icon: typeof BookOpen }> = [
 export function MemberDossier({
   member,
   allMembers,
+  viewerIsOnTree,
   onClose,
   onSelectMember,
   onAddMemoryPhoto,
@@ -503,19 +505,32 @@ export function MemberDossier({
                       Request Pending — Awaiting Approval
                     </div>
                   ) : (
-                    <div className="mt-5 space-y-3 text-left">
-                      <textarea
-                        rows={2}
-                        value={requestNote}
-                        onChange={(e) => setRequestNote(e.target.value)}
-                        placeholder={`Optional note to ${member.firstName}'s profile keeper (e.g., "Hi, it's cousin Alex!")...`}
-                        className="w-full rounded-xl border border-[#D4A359]/22 bg-[#090D0B]/80 px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
-                      />
+                    <div className="mt-5 space-y-2.5 text-left">
+                      <label className="block">
+                        <span className="text-[11px] font-medium text-[#E6C385]">
+                          {viewerIsOnTree
+                            ? "Optional relationship note"
+                            : "How are you related? (Required since you aren't on the tree yet) *"}
+                        </span>
+                        <textarea
+                          rows={2}
+                          value={requestNote}
+                          onChange={(e) => {
+                            setRequestNote(e.target.value);
+                            setActionError(null);
+                          }}
+                          placeholder={`e.g., "Aunt Linda's son" or "Cousin from Seattle"`}
+                          className="mt-1.5 w-full rounded-xl border border-[#D4A359]/25 bg-[#090D0B]/80 px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
+                        />
+                      </label>
                       <button
                         type="button"
-                        disabled={requestingType !== null}
+                        disabled={
+                          requestingType !== null ||
+                          (!viewerIsOnTree && !requestNote.trim())
+                        }
                         onClick={() => void handleSendRequest("view")}
-                        className="flex w-full items-center justify-center gap-2 rounded-full bg-[#D4A359] px-5 py-2.5 text-xs font-semibold text-[#090D0B] shadow-[0_8px_24px_rgba(212,163,89,0.32)] transition hover:bg-[#E6C385] disabled:opacity-50 cursor-pointer"
+                        className="flex w-full items-center justify-center gap-2 rounded-full bg-[#D4A359] px-5 py-2.5 text-xs font-semibold text-[#090D0B] shadow-[0_8px_24px_rgba(212,163,89,0.32)] transition hover:bg-[#E6C385] disabled:opacity-45 cursor-pointer"
                       >
                         {requestingType === "view" ? (
                           <Loader2 className="h-4 w-4 animate-spin" />

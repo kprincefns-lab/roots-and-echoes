@@ -44,6 +44,7 @@ export interface AccessRequestRow {
   member_id: string;
   requester_email: string;
   requester_name: string | null;
+  requester_avatar_url?: string | null;
   note: string | null;
   request_type?: AccessRequestType | null;
   status: AccessRequestStatus;
@@ -127,14 +128,21 @@ export function familyMemberToRow(member: FamilyMember): FamilyMemberRow {
 
 export function rowToAccessRequest(
   row: AccessRequestRow,
-  memberNameMap: Map<string, string>
+  memberNameMap: Map<string, string>,
+  emailToTreeMemberMap?: Map<string, { id: string; name: string }>
 ): AccessRequestRecord {
+  const email = row.requester_email.toLowerCase();
+  const linkedProfile = emailToTreeMemberMap?.get(email) ?? null;
+
   return {
     id: row.id,
     memberId: row.member_id,
     memberName: memberNameMap.get(row.member_id) ?? row.member_id,
-    requesterEmail: row.requester_email.toLowerCase(),
+    requesterEmail: email,
     requesterName: row.requester_name,
+    requesterAvatarUrl: row.requester_avatar_url ?? null,
+    requesterTreeMemberId: linkedProfile?.id ?? null,
+    requesterTreeMemberName: linkedProfile?.name ?? null,
     note: row.note,
     requestType: row.request_type === "claim" ? "claim" : "view",
     status: row.status,
