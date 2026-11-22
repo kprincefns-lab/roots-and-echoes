@@ -4,8 +4,10 @@ import { ChangeEvent, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
+  Cloud,
   Download,
   HardDrive,
+  KeyRound,
   RotateCcw,
   Upload,
   X,
@@ -20,6 +22,9 @@ import {
 interface ArchiveSettingsModalProps {
   open: boolean;
   members: FamilyMember[];
+  storageSource: "supabase" | "local";
+  accessCode: string;
+  onAccessCodeChange: (code: string) => void;
   onClose: () => void;
   onImportArchive: (members: FamilyMember[]) => void;
   onResetArchive: () => void;
@@ -28,6 +33,9 @@ interface ArchiveSettingsModalProps {
 export function ArchiveSettingsModal({
   open,
   members,
+  storageSource,
+  accessCode,
+  onAccessCodeChange,
   onClose,
   onImportArchive,
   onResetArchive,
@@ -120,18 +128,27 @@ export function ArchiveSettingsModal({
             </div>
 
             <div className="space-y-5 p-6">
-              {/* Local Storage Stats */}
+              {/* Storage Backend Status */}
               <div className="flex items-center justify-between rounded-2xl border border-[#F5F2EB]/10 bg-[#0B110E]/75 px-4 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 text-[#E6C385]">
-                    <HardDrive className="h-4 w-4" />
+                    {storageSource === "supabase" ? (
+                      <Cloud className="h-4 w-4" />
+                    ) : (
+                      <HardDrive className="h-4 w-4" />
+                    )}
                   </div>
                   <div>
                     <div className="text-xs font-medium text-[#F5F2EB]">
-                      Browser Archive Storage
+                      {storageSource === "supabase"
+                        ? "Supabase Cloud Archive Connected"
+                        : "Local Browser Storage"}
                     </div>
                     <div className="text-[11px] text-[#A6A095]">
-                      {members.length} members persisted locally
+                      {members.length} members{" "}
+                      {storageSource === "supabase"
+                        ? "synced with Postgres & family-media"
+                        : "persisted locally"}
                     </div>
                   </div>
                 </div>
@@ -139,6 +156,26 @@ export function ArchiveSettingsModal({
                   ~{sizeKB} KB
                 </span>
               </div>
+
+              {/* Family Invite / Curator Code (for cloud writes) */}
+              {storageSource === "supabase" && (
+                <div className="rounded-2xl border border-[#D4A359]/22 bg-[#0B110E]/70 p-4 space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-[#E6C385]">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Family Invite or Curator Code
+                  </label>
+                  <input
+                    type="password"
+                    value={accessCode}
+                    onChange={(e) => onAccessCodeChange(e.target.value)}
+                    placeholder="Enter invite code to save edits to Supabase..."
+                    className="w-full rounded-xl border border-[#D4A359]/25 bg-[#090D0B] px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
+                  />
+                  <p className="text-[10.5px] text-[#A6A095]">
+                    Required for adding members, uploading memory photos, or assigning spirit animals to the shared cloud tree.
+                  </p>
+                </div>
+              )}
 
               {/* Export & Import Actions */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

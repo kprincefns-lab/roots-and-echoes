@@ -47,6 +47,10 @@ export function RootsAndEchoesApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showOnboardingHint, setShowOnboardingHint] = useState(true);
 
+  const [storageSource, setStorageSource] = useState<"supabase" | "local">("local");
+  const [accessCode, setAccessCode] = useState("");
+  const [cloudNotice, setCloudNotice] = useState<string | null>(null);
+
   // Stop ambient audio gracefully on unmount
   useEffect(() => {
     return () => {
@@ -54,13 +58,56 @@ export function RootsAndEchoesApp() {
     };
   }, []);
 
-  // Hydrate persisted archive from localStorage after mount (SSR-safe)
+  // Hydrate from Supabase /api/family (with instant localStorage fallback)
   useEffect(() => {
+    let cancelled = false;
+    const savedCode = window.sessionStorage.getItem("roots-access-code") ?? "";
     const frame = window.requestAnimationFrame(() => {
-      setMembers(loadFamilyArchive());
-      setHydrated(true);
+      if (!cancelled) {
+        setAccessCode(savedCode);
+        setMembers(loadFamilyArchive());
+        setHydrated(true);
+      }
     });
-    return () => window.cancelAnimationFrame(frame);
+
+    void fetch("/api/family")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          data: {
+            members?: FamilyMember[];
+            source?: "supabase" | "local";
+          } | null
+        ) => {
+          if (cancelled || !data) return;
+          if (data.source === "supabase" && Array.isArray(data.members) && data.members.length > 0) {
+            setStorageSource("supabase");
+            setMembers(normalizeGenerations(data.members));
+          }
+        }
+      )
+      .catch(() => {
+        // Keep localStorage archive gracefully
+      });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const handleAccessCodeChange = useCallback((code: string) => {
+    setAccessCode(code);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("roots-access-code", code);
+    }
+  }, []);
+
+  const showCloudToast = useCallback((msg: string) => {
+    setCloudNotice(msg);
+    window.setTimeout(() => {
+      setCloudNotice((curr) => (curr === msg ? null : curr));
+    }, 5200);
   }, []);
 
   // Persist changes to localStorage
@@ -160,8 +207,46 @@ export function RootsAndEchoesApp() {
           m.id === memberId ? { ...m, gallery: [photo, ...m.gallery] } : m
         )
       );
+
+      if (storageSource === "supabase") {
+        void fetch("/api/family", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-access-code": accessCode,
+          },
+          body: JSON.stringify({ memberId, addMemoryPhoto: photo }),
+        })
+          .then(async (res) => {
+            const data = (await res.json()) as {
+              error?: string;
+              photo?: MemoryPhoto;
+            };
+            if (!res.ok) {
+              showCloudToast(
+                data.error || "Saved locally. Enter Family Invite Code in Settings to sync."
+              );
+            } else if (data.photo) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.id === memberId
+                    ? {
+                        ...m,
+                        gallery: m.gallery.map((g) =>
+                          g.id === photo.id ? data.photo! : g
+                        ),
+                      }
+                    : m
+                )
+              );
+            }
+          })
+          .catch(() => {
+            showCloudToast("Saved locally (offline).");
+          });
+      }
     },
-    []
+    [storageSource, accessCode, showCloudToast]
   );
 
   const handleUpdateSpiritAnimal = useCallback(
@@ -174,8 +259,30 @@ export function RootsAndEchoesApp() {
       if (animal) {
         soundscape.playBranchPlanted();
       }
+
+      if (storageSource === "supabase") {
+        void fetch("/api/family", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-access-code": accessCode,
+          },
+          body: JSON.stringify({ memberId, spiritAnimal: animal ?? null }),
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              const data = (await res.json()) as { error?: string };
+              showCloudToast(
+                data.error || "Updated locally. Enter Family Invite Code in Settings to sync."
+              );
+            }
+          })
+          .catch(() => {
+            showCloudToast("Updated locally (offline).");
+          });
+      }
     },
-    []
+    [storageSource, accessCode, showCloudToast]
   );
 
   const handleCreateMember = useCallback(
@@ -184,10 +291,12 @@ export function RootsAndEchoesApp() {
       linkTargetId: string,
       linkType: RelationshipLinkType
     ) => {
+      let nextSnapshot: FamilyMember[] = [];
       setMembers((prev) => {
         const target = prev.find((m) => m.id === linkTargetId);
         if (!target) {
-          return normalizeGenerations([...prev, newMember]);
+          nextSnapshot = normalizeGenerations([...prev, newMember]);
+          return nextSnapshot;
         }
 
         const linkedNew: FamilyMember = { ...newMember };
@@ -243,15 +352,46 @@ export function RootsAndEchoesApp() {
           };
         });
 
-        return normalizeGenerations([...updated, linkedNew]);
+        nextSnapshot = normalizeGenerations([...updated, linkedNew]);
+        return nextSnapshot;
       });
+
+      if (storageSource === "supabase") {
+        window.setTimeout(() => {
+          if (nextSnapshot.length === 0) return;
+          void fetch("/api/family", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-access-code": accessCode,
+            },
+            body: JSON.stringify({ members: nextSnapshot }),
+          })
+            .then(async (res) => {
+              const data = (await res.json()) as {
+                error?: string;
+                members?: FamilyMember[];
+              };
+              if (!res.ok) {
+                showCloudToast(
+                  data.error || "Saved locally. Enter Family Invite Code in Settings to sync."
+                );
+              } else if (Array.isArray(data.members)) {
+                setMembers(normalizeGenerations(data.members));
+              }
+            })
+            .catch(() => {
+              showCloudToast("Saved locally (offline).");
+            });
+        }, 0);
+      }
 
       // Celebratory harp arpeggio & fly straight to the newly added family member
       soundscape.playBranchPlanted();
       setSelectedMemberId(newMember.id);
       setShowOnboardingHint(false);
     },
-    []
+    [storageSource, accessCode, showCloudToast]
   );
 
   const handleQuickAddRelative = useCallback((memberId: string) => {
@@ -266,12 +406,36 @@ export function RootsAndEchoesApp() {
     setWizardOpen(true);
   }, [selectedMemberId]);
 
-  const handleImportArchive = useCallback((imported: FamilyMember[]) => {
-    setMembers(normalizeGenerations(imported));
-    setSelectedMemberId(null);
-    setActiveGeneration(null);
-    setResetSignal((n) => n + 1);
-  }, []);
+  const handleImportArchive = useCallback(
+    (imported: FamilyMember[]) => {
+      const normalized = normalizeGenerations(imported);
+      setMembers(normalized);
+      setSelectedMemberId(null);
+      setActiveGeneration(null);
+      setResetSignal((n) => n + 1);
+
+      if (storageSource === "supabase") {
+        void fetch("/api/family", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-access-code": accessCode,
+          },
+          body: JSON.stringify({ members: normalized, replaceAll: true }),
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              const data = (await res.json()) as { error?: string };
+              showCloudToast(
+                data.error || "Imported locally. Admin Curator Code required to overwrite cloud archive."
+              );
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    [storageSource, accessCode, showCloudToast]
+  );
 
   const handleResetArchive = useCallback(() => {
     const fresh = resetFamilyArchive();
@@ -279,7 +443,25 @@ export function RootsAndEchoesApp() {
     setSelectedMemberId(null);
     setActiveGeneration(null);
     setResetSignal((n) => n + 1);
-  }, []);
+
+    if (storageSource === "supabase") {
+      void fetch("/api/family", {
+        method: "DELETE",
+        headers: {
+          "x-access-code": accessCode,
+        },
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const data = (await res.json()) as { error?: string };
+            showCloudToast(
+              data.error || "Reset locally. Admin Curator Code required to reset cloud archive."
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  }, [storageSource, accessCode, showCloudToast]);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#090D0B]">
@@ -316,6 +498,26 @@ export function RootsAndEchoesApp() {
         onSelectMember={handleSelectMember}
         onOpenSettings={() => setSettingsOpen(true)}
       />
+
+      {/* Cloud Sync / Invite Code Toast */}
+      <AnimatePresence>
+        {cloudNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-28 left-1/2 z-40 -translate-x-1/2"
+          >
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="glass-panel-elevated rounded-full border border-[#E6C385]/45 px-4 py-2 text-xs text-[#F5F2EB] shadow-xl transition hover:border-[#E6C385] cursor-pointer"
+            >
+              {cloudNotice}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Gentle First-Visit Interaction Hint */}
       <AnimatePresence>
@@ -379,6 +581,9 @@ export function RootsAndEchoesApp() {
       <ArchiveSettingsModal
         open={settingsOpen}
         members={members}
+        storageSource={storageSource}
+        accessCode={accessCode}
+        onAccessCodeChange={handleAccessCodeChange}
         onClose={() => setSettingsOpen(false)}
         onImportArchive={handleImportArchive}
         onResetArchive={handleResetArchive}
