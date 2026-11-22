@@ -8,6 +8,8 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Eye,
+  EyeOff,
   ImagePlus,
   KeyRound,
   Loader2,
@@ -148,6 +150,7 @@ export function AddMemberWizard({
 
   const [familyCodeInput, setFamilyCodeInput] = useState(savedFamilyCode);
   const [editingCode, setEditingCode] = useState(!savedFamilyCode);
+  const [showCode, setShowCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -874,59 +877,69 @@ export function AddMemberWizard({
                         ))}
                       </div>
                     </div>
-                    {/* Inline Family Invite Code Verification */}
-                    {inviteRequired && (
-                      <div className="rounded-2xl border border-[#D4A359]/28 bg-[#D4A359]/8 p-3.5 space-y-2">
-                        {!editingCode && savedFamilyCode ? (
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-300">
-                              <CheckCircle2 className="h-4 w-4" />
-                              Family Invite Code saved on this device
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFamilyCodeInput(savedFamilyCode);
-                                setEditingCode(true);
-                              }}
-                              className="text-[11px] text-[#E6C385] underline-offset-2 hover:underline cursor-pointer"
-                            >
-                              Change Code
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <label className="flex items-center gap-1.5 text-xs font-medium text-[#E6C385]">
-                              <KeyRound className="h-3.5 w-3.5" />
-                              Family Invite Code *
-                            </label>
-                            <input
-                              type="password"
-                              value={familyCodeInput}
-                              onChange={(e) => {
-                                setFamilyCodeInput(e.target.value);
-                                setSubmitError(null);
-                              }}
-                              placeholder="Enter your Family Invite Code to publish to the shared tree..."
-                              className="w-full rounded-xl border border-[#D4A359]/30 bg-[#090D0B] px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
-                            />
-                            <p className="text-[10.5px] text-[#A6A095]">
-                              Saved automatically on this device after your first contribution.
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {submitError && (
-                      <div className="flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/12 px-3.5 py-2.5 text-xs text-red-200">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                        <span>{submitError}</span>
-                      </div>
-                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+
+            {/* Always-Visible Docked Family Invite Code Bar (Steps 1, 2, and 3) */}
+            <div className="border-t border-[#D4A359]/18 bg-[#0E1612]/90 px-6 py-3 space-y-2.5">
+              {!editingCode && savedFamilyCode ? (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Family Invite Code saved on this device
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFamilyCodeInput(savedFamilyCode);
+                      setEditingCode(true);
+                    }}
+                    className="text-[11px] font-medium text-[#E6C385] underline-offset-2 hover:underline cursor-pointer"
+                  >
+                    Change Code
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-[#E6C385]">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    <span>Family Invite Code{inviteRequired ? " *" : ""}</span>
+                  </label>
+                  <div className="relative flex-1">
+                    <input
+                      type={showCode ? "text" : "password"}
+                      value={familyCodeInput}
+                      onChange={(e) => {
+                        setFamilyCodeInput(e.target.value);
+                        setSubmitError(null);
+                      }}
+                      placeholder="Enter Family Invite Code (e.g. ROOTS-FAMILY-2026)"
+                      className="w-full rounded-xl border border-[#D4A359]/35 bg-[#090D0B] pl-3 pr-9 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCode((v) => !v)}
+                      aria-label={showCode ? "Hide invite code" : "Show invite code"}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A6A095] hover:text-[#E6C385] cursor-pointer"
+                    >
+                      {showCode ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {submitError && (
+                <div className="flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/12 px-3 py-2 text-xs text-red-200">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                  <span>{submitError}</span>
+                </div>
+              )}
             </div>
 
             {/* Wizard Footer */}
