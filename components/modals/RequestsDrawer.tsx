@@ -259,11 +259,11 @@ export function RequestsDrawer({
                                 className="inline-flex items-center gap-1 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-2.5 py-0.5 text-[10.5px] font-medium text-emerald-200 transition hover:bg-emerald-500/20 cursor-pointer"
                               >
                                 <UserCheck className="h-3 w-3 text-emerald-400" />
-                                Listed on Tree as: {req.requesterTreeMemberName}
+                                On Tree as: {req.requesterTreeMemberName}
                               </button>
                             ) : (
                               <span className="inline-flex items-center gap-1 rounded-full border border-[#F5F2EB]/12 bg-[#090D0B]/70 px-2.5 py-0.5 text-[10.5px] text-[#A6A095]">
-                                New relative — not yet on tree
+                                Not yet listed on tree
                               </span>
                             )}
 

@@ -936,6 +936,7 @@ export function RootsAndEchoesApp() {
         onUpdateSpiritAnimal={handleUpdateSpiritAnimal}
         onTogglePublicToFamily={handleTogglePublicToFamily}
         onEditMember={(m) => setEditingMember(m)}
+        onDeleteMember={handleDeleteMember}
         onRequestAccess={handleRequestAccess}
         onQuickAddRelative={handleQuickAddRelative}
       />

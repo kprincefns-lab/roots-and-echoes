@@ -283,9 +283,23 @@ export async function projectMembersForViewer(
     }
   }
 
+  // Cross-reference owner emails to a human-readable creator name on the tree
+  const ownerEmailToName = new Map<string, string>();
+  for (const m of members) {
+    if (m.ownerEmail) {
+      const key = m.ownerEmail.toLowerCase();
+      if (!ownerEmailToName.has(key)) {
+        ownerEmailToName.set(key, `${m.firstName} ${m.lastName}`);
+      }
+    }
+  }
+
   return Promise.all(
     members.map(async (member) => {
       const owner = member.ownerEmail?.toLowerCase() ?? null;
+      const addedByName = owner
+        ? ownerEmailToName.get(owner) ?? owner.split("@")[0]
+        : "Family Curator";
       const approvedList = (member.approvedViewerEmails ?? []).map((e) =>
         e.toLowerCase()
       );
@@ -313,6 +327,7 @@ export async function projectMembersForViewer(
           ...member,
           portraitUrl: signedPortrait,
           gallery: signedGallery,
+          addedByName,
           accessStatus: "approved" as AccessStatus,
           canEdit,
           claimPending: claimPendingByMember.has(member.id),
@@ -358,6 +373,7 @@ export async function projectMembersForViewer(
           suggestedPrompts: [],
         },
         ownerEmail: owner,
+        addedByName,
         isPublicToFamily: false,
         accessStatus,
         canEdit: false,

@@ -18,6 +18,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserCheck,
   UserPlus,
   X,
@@ -59,6 +60,7 @@ interface MemberDossierProps {
     isPublic: boolean
   ) => Promise<{ ok: boolean; error?: string }>;
   onEditMember: (member: FamilyMember) => void;
+  onDeleteMember: (memberId: string) => Promise<{ ok: boolean; error?: string }>;
   onRequestAccess: (
     memberId: string,
     note: string,
@@ -84,6 +86,7 @@ export function MemberDossier({
   onUpdateSpiritAnimal,
   onTogglePublicToFamily,
   onEditMember,
+  onDeleteMember,
   onRequestAccess,
   onQuickAddRelative,
 }: MemberDossierProps) {
@@ -91,6 +94,8 @@ export function MemberDossier({
   const [spiritMenuOpen, setSpiritMenuOpen] = useState(false);
   const [savingSpirit, setSavingSpirit] = useState(false);
   const [togglingPublic, setTogglingPublic] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Locked profile request state
@@ -279,6 +284,13 @@ export function MemberDossier({
                 )}
 
                 <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Read-only attribution badge when added by another relative */}
+                  {!member.canEdit && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#F5F2EB]/10 bg-[#0B110E]/75 px-2.5 py-1 text-[10.5px] text-[#A6A095]">
+                      Added by {member.addedByName || "Family Curator"}
+                    </span>
+                  )}
+
                   {/* Owner Quick Public Toggle */}
                   {member.canEdit && (
                     <button
@@ -334,6 +346,50 @@ export function MemberDossier({
                       </span>
                     )
                   )}
+
+                  {/* Direct Delete Entry control for owner / curator */}
+                  {member.canEdit &&
+                    (!confirmDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(true)}
+                        title="Delete this entry"
+                        className="inline-flex items-center gap-1 rounded-full border border-red-500/25 bg-red-500/8 px-2.5 py-1 text-[10.5px] font-medium text-red-300/90 transition hover:border-red-400/50 hover:bg-red-500/18 cursor-pointer"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Delete Entry</span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-red-500/45 bg-red-500/15 px-2.5 py-1 text-[10.5px]">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(false)}
+                          className="text-[#A6A095] hover:text-[#F5F2EB] cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <span className="text-[#F5F2EB]/25">·</span>
+                        <button
+                          type="button"
+                          disabled={deleting}
+                          onClick={async () => {
+                            setDeleting(true);
+                            setActionError(null);
+                            const res = await onDeleteMember(member.id);
+                            setDeleting(false);
+                            setConfirmDelete(false);
+                            if (!res.ok) {
+                              setActionError(
+                                res.error || "Unable to delete this entry."
+                              );
+                            }
+                          }}
+                          className="font-semibold text-red-200 hover:text-white cursor-pointer"
+                        >
+                          {deleting ? "Deleting..." : "Confirm Delete"}
+                        </button>
+                      </span>
+                    ))}
                 </div>
               </div>
             )}

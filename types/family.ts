@@ -90,6 +90,7 @@ export interface FamilyMember {
   // Ownership & privacy metadata (server-enforced)
   ownerEmail?: string | null;
   submittedBy?: string | null;
+  addedByName?: string | null;
   approvedViewerEmails?: string[];
   isPublicToFamily?: boolean;
   accessStatus?: AccessStatus;

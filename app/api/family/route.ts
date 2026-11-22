@@ -418,7 +418,7 @@ export async function PATCH(request: NextRequest) {
 
     if (!isCurator && !isOwner) {
       return NextResponse.json(
-        { error: "Only the profile creator or Admin Curator can edit this record." },
+        { error: "You can only edit or delete family members you added." },
         { status: 403 }
       );
     }
@@ -574,7 +574,7 @@ export async function DELETE(request: NextRequest) {
 
     if (!isCurator && !isOwner) {
       return NextResponse.json(
-        { error: "Only the profile creator or Admin Curator can delete this profile." },
+        { error: "You can only edit or delete family members you added." },
         { status: 403 }
       );
     }
