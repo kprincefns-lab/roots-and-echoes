@@ -19,6 +19,7 @@ create table if not exists public.family_members (
   parent_ids text[] not null default '{}',
   partner_ids text[] not null default '{}',
   children_ids text[] not null default '{}',
+  sibling_ids text[] not null default '{}',
   bio text not null default '',
   milestones jsonb not null default '[]'::jsonb,
   gallery jsonb not null default '[]'::jsonb,
@@ -34,6 +35,7 @@ create table if not exists public.family_members (
 );
 
 -- Safe idempotent column additions for existing deployments
+alter table public.family_members add column if not exists sibling_ids text[] not null default '{}';
 alter table public.family_members add column if not exists owner_email text;
 alter table public.family_members add column if not exists submitted_by text;
 alter table public.family_members add column if not exists approved_viewer_emails text[] not null default '{}';

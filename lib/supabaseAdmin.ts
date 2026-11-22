@@ -27,6 +27,7 @@ export interface FamilyMemberRow {
   parent_ids: string[];
   partner_ids: string[];
   children_ids: string[];
+  sibling_ids?: string[] | null;
   bio: string;
   milestones: FamilyMember["milestones"];
   gallery: FamilyMember["gallery"];
@@ -80,6 +81,7 @@ export function rowToFamilyMember(row: FamilyMemberRow): FamilyMember {
     parentIds: Array.isArray(row.parent_ids) ? row.parent_ids : [],
     partnerIds: Array.isArray(row.partner_ids) ? row.partner_ids : [],
     childrenIds: Array.isArray(row.children_ids) ? row.children_ids : [],
+    siblingIds: Array.isArray(row.sibling_ids) ? row.sibling_ids : [],
     bio: row.bio ?? "",
     milestones: Array.isArray(row.milestones) ? row.milestones : [],
     gallery: Array.isArray(row.gallery) ? row.gallery : [],
@@ -111,6 +113,7 @@ export function familyMemberToRow(member: FamilyMember): FamilyMemberRow {
     parent_ids: member.parentIds,
     partner_ids: member.partnerIds,
     children_ids: member.childrenIds,
+    sibling_ids: member.siblingIds ?? [],
     bio: member.bio,
     milestones: member.milestones,
     gallery: member.gallery,
@@ -349,6 +352,7 @@ export async function projectMembersForViewer(
         parentIds: member.parentIds,
         partnerIds: member.partnerIds,
         childrenIds: member.childrenIds,
+        siblingIds: member.siblingIds ?? [],
         bio: "",
         milestones: [],
         gallery: [],

@@ -31,7 +31,7 @@ interface BranchBoughProps {
   edgeId: string;
   from: Vec3;
   to: Vec3;
-  kind: "lineage" | "partner";
+  kind: "lineage" | "partner" | "sibling";
   layoutMode: TreeLayoutMode;
   highlighted: boolean;
   dimmed: boolean;
@@ -87,6 +87,27 @@ function BranchBough({
           barkNoise: 0.02,
           seed: seed + 5,
         }),
+        veinGeo: null,
+      };
+    }
+
+    if (kind === "sibling") {
+      // Graceful single arched luminous vine linking siblings when parents are not yet on the tree
+      const mid = start.clone().lerp(end, 0.5);
+      mid.y += layoutMode === "organic" ? 0.34 : 0.28;
+      const siblingCurve = new THREE.CatmullRomCurve3([start, mid, end]);
+      const r = highlighted ? 0.034 : 0.022;
+      return {
+        mainGeo: createTaperedOrganicTube({
+          curve: siblingCurve,
+          tubularSegments: 24,
+          radialSegments: 8,
+          radiusStart: r,
+          radiusEnd: r,
+          barkNoise: 0.015,
+          seed,
+        }),
+        partnerTwinGeo: null,
         veinGeo: null,
       };
     }
@@ -183,6 +204,22 @@ function BranchBough({
           </mesh>
         )}
       </group>
+    );
+  }
+
+  if (kind === "sibling") {
+    return (
+      <mesh geometry={mainGeo}>
+        <meshStandardMaterial
+          color={highlighted ? "#DCECC8" : "#9BB58B"}
+          emissive="#A8C692"
+          emissiveIntensity={highlighted ? 1.35 : dimmed ? 0.08 : 0.45}
+          roughness={0.32}
+          metalness={0.42}
+          transparent
+          opacity={highlighted ? 0.96 : dimmed ? 0.14 : 0.72}
+        />
+      </mesh>
     );
   }
 

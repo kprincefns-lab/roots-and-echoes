@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Check,
   Globe,
+  Link2,
   Loader2,
   Lock,
   Trash2,
@@ -26,6 +27,7 @@ interface EditMemberModalProps {
     updates: Partial<FamilyMember>
   ) => Promise<{ ok: boolean; error?: string }>;
   onDeleteMember: (memberId: string) => Promise<{ ok: boolean; error?: string }>;
+  onOpenConnect?: (member: FamilyMember) => void;
 }
 
 async function cropSquare(file: File): Promise<string> {
@@ -62,6 +64,7 @@ export function EditMemberModal({
   onClose,
   onSaveEdits,
   onDeleteMember,
+  onOpenConnect,
 }: EditMemberModalProps) {
   const [firstName, setFirstName] = useState(member?.firstName ?? "");
   const [lastName, setLastName] = useState(member?.lastName ?? "");
@@ -186,23 +189,36 @@ export function EditMemberModal({
           className="glass-panel-elevated flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-[#D4A359]/18 px-6 py-4">
-            <div>
+          <div className="flex items-center justify-between gap-3 border-b border-[#D4A359]/18 px-6 py-4">
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#D4A359]">
                 Profile Stewardship
               </p>
-              <h2 className="mt-0.5 font-editorial text-3xl text-[#F5F2EB]">
+              <h2 className="mt-0.5 truncate font-editorial text-3xl text-[#F5F2EB]">
                 Edit {member.firstName} {member.lastName}
               </h2>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close editor"
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-[#F5F2EB]/12 bg-[#090D0B]/50 text-[#A6A095] hover:text-[#F5F2EB] cursor-pointer"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {onOpenConnect && (
+                <button
+                  type="button"
+                  onClick={() => onOpenConnect(member)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/35 bg-[#D4A359]/12 px-3 py-1.5 text-xs font-medium text-[#E6C385] transition hover:bg-[#D4A359]/24 cursor-pointer"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Connect to Relative</span>
+                  <span className="sm:hidden">Connect</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close editor"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#F5F2EB]/12 bg-[#090D0B]/50 text-[#A6A095] hover:text-[#F5F2EB] cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           {/* Scrollable Form */}

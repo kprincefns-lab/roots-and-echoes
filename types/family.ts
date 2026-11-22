@@ -86,6 +86,7 @@ export interface FamilyMember {
   parentIds: string[];
   partnerIds: string[];
   childrenIds: string[];
+  siblingIds?: string[];
   bio: string;
   milestones: LifeMilestone[];
   gallery: MemoryPhoto[];

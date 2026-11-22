@@ -10,6 +10,7 @@ import {
   Compass,
   Globe,
   HeartPulse,
+  Link2,
   Loader2,
   Lock,
   MapPin,
@@ -67,6 +68,7 @@ interface MemberDossierProps {
     requestType: AccessRequestType
   ) => Promise<{ ok: boolean; error?: string }>;
   onQuickAddRelative: (memberId: string) => void;
+  onOpenConnect: (member: FamilyMember) => void;
 }
 
 const TABS: Array<{ id: DossierTab; label: string; icon: typeof BookOpen }> = [
@@ -89,6 +91,7 @@ export function MemberDossier({
   onDeleteMember,
   onRequestAccess,
   onQuickAddRelative,
+  onOpenConnect,
 }: MemberDossierProps) {
   const [activeTab, setActiveTab] = useState<DossierTab>("stories");
   const [spiritMenuOpen, setSpiritMenuOpen] = useState(false);
@@ -121,12 +124,16 @@ export function MemberDossier({
         .filter((m): m is FamilyMember => Boolean(m))
     : [];
   const siblings = member
-    ? allMembers.filter(
-        (other) =>
-          other.id !== member.id &&
+    ? allMembers.filter((other) => {
+        if (other.id === member.id) return false;
+        const sharesParent =
           member.parentIds.length > 0 &&
-          other.parentIds.some((pid) => member.parentIds.includes(pid))
-      )
+          other.parentIds.some((pid) => member.parentIds.includes(pid));
+        const explicitSibling =
+          Boolean(member.siblingIds?.includes(other.id)) ||
+          Boolean(other.siblingIds?.includes(member.id));
+        return sharesParent || explicitSibling;
+      })
     : [];
 
   const isLocked =
@@ -201,20 +208,28 @@ export function MemberDossier({
                   type="button"
                   onClick={() => onEditMember(member)}
                   title="Edit this profile"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/40 bg-[#D4A359]/16 px-3 py-1.5 text-[11px] font-medium text-[#F2DCAA] transition hover:bg-[#D4A359]/28 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/40 bg-[#D4A359]/16 px-2.5 py-1.5 text-[11px] font-medium text-[#F2DCAA] transition hover:bg-[#D4A359]/28 cursor-pointer"
                 >
                   <Pencil className="h-3 w-3" />
-                  <span>Edit Profile</span>
+                  <span className="hidden sm:inline">Edit</span>
                 </button>
               )}
               <button
                 type="button"
+                onClick={() => onOpenConnect(member)}
+                title={`Connect ${member.firstName} to an existing relative`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/35 bg-[#D4A359]/12 px-2.5 py-1.5 text-[11px] font-medium text-[#E6C385] transition hover:bg-[#D4A359]/22 cursor-pointer"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Connect</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => onQuickAddRelative(member.id)}
-                title={`Add relative linked to ${member.firstName}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 px-2.5 py-1.5 text-[11px] font-medium text-[#E6C385] transition hover:bg-[#D4A359]/20 cursor-pointer"
+                title={`Add a new relative linked to ${member.firstName}`}
+                className="inline-flex items-center gap-1 rounded-full border border-[#F5F2EB]/15 bg-[#090D0B]/55 px-2.5 py-1.5 text-[11px] font-medium text-[#F5F2EB]/85 transition hover:border-[#D4A359]/40 hover:text-[#E6C385] cursor-pointer"
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Link</span>
               </button>
               <button
                 type="button"
@@ -449,65 +464,70 @@ export function MemberDossier({
             </AnimatePresence>
 
             {/* Clickable Relationship Badges (Names only — always visible for tree navigation) */}
-            {(parents.length > 0 ||
-              partners.length > 0 ||
-              siblings.length > 0 ||
-              children.length > 0) && (
-              <div className="mt-3.5 flex flex-wrap gap-1.5">
-                {parents.map((p) => (
-                  <button
-                    key={`p-${p.id}`}
-                    type="button"
-                    onClick={() => onSelectMember(p.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/12 bg-[#0B110E]/75 px-2.5 py-1 text-[11px] text-[#F5F2EB]/85 transition hover:border-[#D4A359]/55 hover:text-[#E6C385] cursor-pointer"
-                  >
-                    <span className="text-[9.5px] uppercase tracking-wider text-[#D4A359]/80">
-                      Parent
-                    </span>
-                    <span>{p.firstName}</span>
-                  </button>
-                ))}
-                {partners.map((p) => (
-                  <button
-                    key={`sp-${p.id}`}
-                    type="button"
-                    onClick={() => onSelectMember(p.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/28 bg-[#D4A359]/10 px-2.5 py-1 text-[11px] text-[#F5F2EB] transition hover:border-[#E6C385]/70 hover:bg-[#D4A359]/20 cursor-pointer"
-                  >
-                    <span className="text-[9.5px] uppercase tracking-wider text-[#E6C385]">
-                      Partner
-                    </span>
-                    <span>{p.firstName}</span>
-                  </button>
-                ))}
-                {siblings.map((s) => (
-                  <button
-                    key={`sib-${s.id}`}
-                    type="button"
-                    onClick={() => onSelectMember(s.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/12 bg-[#0B110E]/75 px-2.5 py-1 text-[11px] text-[#F5F2EB]/85 transition hover:border-[#D4A359]/55 hover:text-[#E6C385] cursor-pointer"
-                  >
-                    <span className="text-[9.5px] uppercase tracking-wider text-[#D4A359]/80">
-                      Sibling
-                    </span>
-                    <span>{s.firstName}</span>
-                  </button>
-                ))}
-                {children.map((c) => (
-                  <button
-                    key={`c-${c.id}`}
-                    type="button"
-                    onClick={() => onSelectMember(c.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/12 bg-[#0B110E]/75 px-2.5 py-1 text-[11px] text-[#F5F2EB]/85 transition hover:border-[#D4A359]/55 hover:text-[#E6C385] cursor-pointer"
-                  >
-                    <span className="text-[9.5px] uppercase tracking-wider text-[#D4A359]/80">
-                      Child
-                    </span>
-                    <span>{c.firstName}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="mt-3.5 flex flex-wrap gap-1.5">
+              {parents.map((p) => (
+                <button
+                  key={`p-${p.id}`}
+                  type="button"
+                  onClick={() => onSelectMember(p.id)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/12 bg-[#0B110E]/75 px-2.5 py-1 text-[11px] text-[#F5F2EB]/85 transition hover:border-[#D4A359]/55 hover:text-[#E6C385] cursor-pointer"
+                >
+                  <span className="text-[9.5px] uppercase tracking-wider text-[#D4A359]/80">
+                    Parent
+                  </span>
+                  <span>{p.firstName}</span>
+                </button>
+              ))}
+              {partners.map((p) => (
+                <button
+                  key={`sp-${p.id}`}
+                  type="button"
+                  onClick={() => onSelectMember(p.id)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/28 bg-[#D4A359]/10 px-2.5 py-1 text-[11px] text-[#F5F2EB] transition hover:border-[#E6C385]/70 hover:bg-[#D4A359]/20 cursor-pointer"
+                >
+                  <span className="text-[9.5px] uppercase tracking-wider text-[#E6C385]">
+                    Partner
+                  </span>
+                  <span>{p.firstName}</span>
+                </button>
+              ))}
+              {siblings.map((s) => (
+                <button
+                  key={`sib-${s.id}`}
+                  type="button"
+                  onClick={() => onSelectMember(s.id)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#A8C692]/28 bg-[#A8C692]/10 px-2.5 py-1 text-[11px] text-[#F5F2EB]/90 transition hover:border-[#A8C692]/60 hover:text-[#DCECC8] cursor-pointer"
+                >
+                  <span className="text-[9.5px] uppercase tracking-wider text-[#A8C692]">
+                    Sibling
+                  </span>
+                  <span>{s.firstName}</span>
+                </button>
+              ))}
+              {children.map((c) => (
+                <button
+                  key={`c-${c.id}`}
+                  type="button"
+                  onClick={() => onSelectMember(c.id)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/12 bg-[#0B110E]/75 px-2.5 py-1 text-[11px] text-[#F5F2EB]/85 transition hover:border-[#D4A359]/55 hover:text-[#E6C385] cursor-pointer"
+                >
+                  <span className="text-[9.5px] uppercase tracking-wider text-[#D4A359]/80">
+                    Child
+                  </span>
+                  <span>{c.firstName}</span>
+                </button>
+              ))}
+              {allMembers.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onOpenConnect(member)}
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#D4A359]/35 bg-[#D4A359]/6 px-2.5 py-1 text-[10.5px] font-medium text-[#E6C385] transition hover:border-[#E6C385]/70 hover:bg-[#D4A359]/16 cursor-pointer"
+                >
+                  <Link2 className="h-3 w-3" />
+                  <span>Connect to Relative</span>
+                </button>
+              )}
+            </div>
 
             {/* Animated Tab Navigation (only when viewer has Full Access) */}
             {!isLocked && (

@@ -251,11 +251,13 @@ export async function POST(request: NextRequest) {
     const parentIds: string[] = [];
     const partnerIds: string[] = [];
     const childrenIds: string[] = [];
+    const siblingIds: string[] = [];
     const edgeUpdates: Array<{
       id: string;
       parent_ids?: string[];
       partner_ids?: string[];
       children_ids?: string[];
+      sibling_ids?: string[];
     }> = [];
 
     if (target) {
@@ -295,6 +297,13 @@ export async function POST(request: NextRequest) {
         });
       } else if (linkType === "brother" || linkType === "sister") {
         generation = target.generation;
+        siblingIds.push(target.id);
+        edgeUpdates.push({
+          id: target.id,
+          sibling_ids: Array.from(
+            new Set([...(target.siblingIds ?? []), incoming.id])
+          ),
+        });
         for (const pid of target.parentIds) {
           const sharedParent = existingMembers.find((m) => m.id === pid);
           if (sharedParent) {
@@ -319,6 +328,7 @@ export async function POST(request: NextRequest) {
       parentIds: Array.from(new Set(parentIds)),
       partnerIds: Array.from(new Set(partnerIds)),
       childrenIds: Array.from(new Set(childrenIds)),
+      siblingIds: Array.from(new Set(siblingIds)),
       ownerEmail: session.email,
       submittedBy: session.email,
       approvedViewerEmails: [],

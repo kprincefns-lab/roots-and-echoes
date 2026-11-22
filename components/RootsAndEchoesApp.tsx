@@ -29,6 +29,7 @@ import { BottomControls } from "@/components/hud/BottomControls";
 import { MemberDossier } from "@/components/dossier/MemberDossier";
 import { AddMemberWizard } from "@/components/wizard/AddMemberWizard";
 import { EditMemberModal } from "@/components/modals/EditMemberModal";
+import { ConnectRelativeModal } from "@/components/modals/ConnectRelativeModal";
 import { RequestsDrawer } from "@/components/modals/RequestsDrawer";
 import { ArchiveSettingsModal } from "@/components/modals/ArchiveSettingsModal";
 
@@ -73,6 +74,8 @@ export function RootsAndEchoesApp() {
   const [wizardSession, setWizardSession] = useState(0);
   const [wizardLinkedId, setWizardLinkedId] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
+  const [connectSourceMember, setConnectSourceMember] =
+    useState<FamilyMember | null>(null);
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showOnboardingHint, setShowOnboardingHint] = useState(true);
@@ -221,7 +224,9 @@ export function RootsAndEchoesApp() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (editingMember) {
+      if (connectSourceMember) {
+        setConnectSourceMember(null);
+      } else if (editingMember) {
         setEditingMember(null);
       } else if (wizardOpen) {
         setWizardOpen(false);
@@ -236,7 +241,14 @@ export function RootsAndEchoesApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editingMember, wizardOpen, requestsOpen, settingsOpen, selectedMemberId]);
+  }, [
+    connectSourceMember,
+    editingMember,
+    wizardOpen,
+    requestsOpen,
+    settingsOpen,
+    selectedMemberId,
+  ]);
 
   const generations = useMemo(() => {
     const unique = Array.from(new Set(members.map((m) => m.generation)));
@@ -362,6 +374,53 @@ export function RootsAndEchoesApp() {
         return {
           ok: false,
           error: "Network error while saving to Supabase.",
+        };
+      }
+    },
+    [buildAuthHeaders, fetchLiveArchive]
+  );
+
+  const handleConnectRelatives = useCallback(
+    async (
+      sourceId: string,
+      targetId: string,
+      relationship: RelationshipLinkType
+    ): Promise<MutationResult> => {
+      try {
+        const res = await fetch("/api/family/connect", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...buildAuthHeaders(),
+          },
+          body: JSON.stringify({ sourceId, targetId, relationship }),
+        });
+
+        const data = (await res.json()) as {
+          ok?: boolean;
+          members?: FamilyMember[];
+          error?: string;
+        };
+
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data.error || "Unable to connect relatives in Supabase.",
+          };
+        }
+
+        if (Array.isArray(data.members)) {
+          setMembers(normalizeGenerations(data.members));
+        } else {
+          await fetchLiveArchive();
+        }
+
+        soundscape.playBranchPlanted();
+        return { ok: true };
+      } catch {
+        return {
+          ok: false,
+          error: "Network error while connecting relatives.",
         };
       }
     },
@@ -939,6 +998,7 @@ export function RootsAndEchoesApp() {
         onDeleteMember={handleDeleteMember}
         onRequestAccess={handleRequestAccess}
         onQuickAddRelative={handleQuickAddRelative}
+        onOpenConnect={(m) => setConnectSourceMember(m)}
       />
 
       {/* Guided 3-Step Contribution & Media Upload Wizard */}
@@ -959,6 +1019,18 @@ export function RootsAndEchoesApp() {
           onClose={() => setEditingMember(null)}
           onSaveEdits={handleSaveEdits}
           onDeleteMember={handleDeleteMember}
+          onOpenConnect={(m) => setConnectSourceMember(m)}
+        />
+      )}
+
+      {/* Connect Existing Relatives Modal */}
+      {connectSourceMember && (
+        <ConnectRelativeModal
+          key={connectSourceMember.id}
+          sourceMember={connectSourceMember}
+          allMembers={members}
+          onClose={() => setConnectSourceMember(null)}
+          onConnect={handleConnectRelatives}
         />
       )}
 

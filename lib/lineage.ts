@@ -6,7 +6,7 @@ export interface BranchEdge {
   id: string;
   fromId: string;
   toId: string;
-  kind: "lineage" | "partner";
+  kind: "lineage" | "partner" | "sibling";
 }
 
 export interface ComputedTreeLayout {
@@ -37,7 +37,7 @@ export function getGenerationLabel(gen: number): string {
 
 /**
  * Returns the set of member IDs in the selected member's direct lineage:
- * the member themselves, all ancestors, all descendants, and immediate partners.
+ * the member themselves, all ancestors, all descendants, immediate partners, and explicit siblings.
  */
 export function getDirectLineageIds(
   selectedId: string | null,
@@ -76,12 +76,17 @@ export function getDirectLineageIds(
     }
   }
 
-  // Include immediate partner(s) of the selected member for emotional clarity
+  // Include immediate partner(s) and explicit sibling(s) of the selected member
   const selected = byId.get(selectedId);
   if (selected) {
     for (const partnerId of selected.partnerIds) {
       if (byId.has(partnerId)) {
         result.add(partnerId);
+      }
+    }
+    for (const sibId of selected.siblingIds ?? []) {
+      if (byId.has(sibId)) {
+        result.add(sibId);
       }
     }
   }
@@ -188,6 +193,7 @@ export function computeTreeLayouts(members: FamilyMember[]): ComputedTreeLayout 
   const edges: BranchEdge[] = [];
   const seenPartners = new Set<string>();
   const seenLineage = new Set<string>();
+  const seenSiblings = new Set<string>();
 
   for (const m of members) {
     // Parent -> Child edges
@@ -231,6 +237,27 @@ export function computeTreeLayouts(members: FamilyMember[]): ComputedTreeLayout 
           fromId: m.id,
           toId: pid,
           kind: "partner",
+        });
+      }
+    }
+
+    // Explicit Sibling edges (connects siblings on the 3D tree even when parents aren't added yet)
+    for (const sid of m.siblingIds ?? []) {
+      const sibling = byId.get(sid);
+      if (!sibling) continue;
+      const sorted = [m.id, sid].sort().join("~");
+      if (seenSiblings.has(sorted)) continue;
+      seenSiblings.add(sorted);
+
+      const sharesParent = m.parentIds.some((pid) =>
+        sibling.parentIds.includes(pid)
+      );
+      if (!sharesParent) {
+        edges.push({
+          id: `sib-${sorted}`,
+          fromId: m.id,
+          toId: sid,
+          kind: "sibling",
         });
       }
     }
