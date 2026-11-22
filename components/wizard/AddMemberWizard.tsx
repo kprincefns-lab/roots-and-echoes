@@ -3,10 +3,14 @@
 import { ChangeEvent, DragEvent, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Check,
+  CheckCircle2,
   ImagePlus,
+  KeyRound,
+  Loader2,
   Sparkles,
   Trash2,
   Upload,
@@ -26,12 +30,15 @@ interface AddMemberWizardProps {
   open: boolean;
   existingMembers: FamilyMember[];
   initialLinkedMemberId?: string | null;
+  inviteRequired: boolean;
+  savedFamilyCode: string;
   onClose: () => void;
   onCreateMember: (
     newMember: FamilyMember,
     linkTargetId: string,
-    linkType: RelationshipLinkType
-  ) => void;
+    linkType: RelationshipLinkType,
+    familyCode: string
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -102,6 +109,8 @@ export function AddMemberWizard({
   open,
   existingMembers,
   initialLinkedMemberId,
+  inviteRequired,
+  savedFamilyCode,
   onClose,
   onCreateMember,
 }: AddMemberWizardProps) {
@@ -128,7 +137,7 @@ export function AddMemberWizard({
   const [galleryItems, setGalleryItems] = useState<MemoryPhoto[]>([]);
   const [isDraggingPortrait, setIsDraggingPortrait] = useState(false);
 
-  // Step 3: Stories, Beliefs & Genetics
+  // Step 3: Stories, Beliefs & Genetics + Invite Code
   const [bio, setBio] = useState("");
   const [valuesInput, setValuesInput] = useState("");
   const [philosophy, setPhilosophy] = useState("");
@@ -136,6 +145,11 @@ export function AddMemberWizard({
   const [bloodType, setBloodType] = useState("");
   const [healthNotes, setHealthNotes] = useState("");
   const [spiritAnimal, setSpiritAnimal] = useState<SpiritAnimalType | "">("");
+
+  const [familyCodeInput, setFamilyCodeInput] = useState(savedFamilyCode);
+  const [editingCode, setEditingCode] = useState(!savedFamilyCode);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Re-crop portrait whenever zoom changes
   useEffect(() => {
@@ -205,16 +219,32 @@ export function AddMemberWizard({
     lastName.trim().length > 0 &&
     Number(birthYear) >= 1700 &&
     Number(birthYear) <= new Date().getFullYear() &&
-    Boolean(linkedMemberId);
+    (existingMembers.length === 0 || Boolean(linkedMemberId));
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    if (isSubmitting) return;
+
+    const effectiveCode = (
+      editingCode ? familyCodeInput : savedFamilyCode || familyCodeInput
+    ).trim();
+
+    if (inviteRequired && !effectiveCode) {
+      setEditingCode(true);
+      setSubmitError(
+        "Please enter your Family Invite Code below to save this relative to the shared tree."
+      );
+      return;
+    }
+
     const targetMember = existingMembers.find((m) => m.id === linkedMemberId);
     const parsedBirth = Number(birthYear) || 1990;
     const parsedPassing = passingYear.trim() ? Number(passingYear) : undefined;
 
     let generation = targetMember ? targetMember.generation : 0;
-    if (relationshipType === "child") generation += 1;
-    if (relationshipType === "parent") generation -= 1;
+    if (targetMember) {
+      if (relationshipType === "child") generation += 1;
+      if (relationshipType === "parent") generation -= 1;
+    }
 
     const cleanFirst = firstName.trim();
     const cleanLast = lastName.trim();
@@ -316,7 +346,24 @@ export function AddMemberWizard({
       },
     };
 
-    onCreateMember(newMember, linkedMemberId, relationshipType);
+    setIsSubmitting(true);
+    setSubmitError(null);
+    const result = await onCreateMember(
+      newMember,
+      linkedMemberId,
+      relationshipType,
+      effectiveCode
+    );
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      setSubmitError(
+        result.error || "Unable to save this member to Supabase. Please try again."
+      );
+      setEditingCode(true);
+      return;
+    }
+
     resetForm();
     onClose();
   };
@@ -399,42 +446,53 @@ export function AddMemberWizard({
                     className="space-y-5"
                   >
                     {/* Relationship Sentence Builder */}
-                    <div className="rounded-2xl border border-[#D4A359]/28 bg-[#D4A359]/8 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E6C385]">
-                        Connect to the Tree
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-[#F5F2EB]">
-                        <span>Link to</span>
-                        <select
-                          value={linkedMemberId}
-                          onChange={(e) => setLinkedMemberId(e.target.value)}
-                          className="rounded-xl border border-[#D4A359]/35 bg-[#090D0B] px-3 py-2 text-xs font-medium text-[#F5F2EB] focus:border-[#E6C385] focus:outline-none"
-                        >
-                          {existingMembers.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.firstName} {m.lastName} ({m.birthYear})
-                            </option>
-                          ))}
-                        </select>
-                        <span>as their</span>
-                        <div className="inline-flex rounded-xl border border-[#D4A359]/30 bg-[#090D0B]/85 p-1">
-                          {(["child", "partner", "parent"] as const).map((rel) => (
-                            <button
-                              key={rel}
-                              type="button"
-                              onClick={() => setRelationshipType(rel)}
-                              className={`rounded-lg px-3 py-1 text-xs font-medium capitalize transition cursor-pointer ${
-                                relationshipType === rel
-                                  ? "bg-[#D4A359] text-[#090D0B]"
-                                  : "text-[#A6A095] hover:text-[#F5F2EB]"
-                              }`}
-                            >
-                              {rel}
-                            </button>
-                          ))}
+                    {existingMembers.length > 0 ? (
+                      <div className="rounded-2xl border border-[#D4A359]/28 bg-[#D4A359]/8 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E6C385]">
+                          Connect to the Tree
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-[#F5F2EB]">
+                          <span>Link to</span>
+                          <select
+                            value={linkedMemberId}
+                            onChange={(e) => setLinkedMemberId(e.target.value)}
+                            className="rounded-xl border border-[#D4A359]/35 bg-[#090D0B] px-3 py-2 text-xs font-medium text-[#F5F2EB] focus:border-[#E6C385] focus:outline-none"
+                          >
+                            {existingMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.firstName} {m.lastName} ({m.birthYear})
+                              </option>
+                            ))}
+                          </select>
+                          <span>as their</span>
+                          <div className="inline-flex rounded-xl border border-[#D4A359]/30 bg-[#090D0B]/85 p-1">
+                            {(["child", "partner", "parent"] as const).map((rel) => (
+                              <button
+                                key={rel}
+                                type="button"
+                                onClick={() => setRelationshipType(rel)}
+                                className={`rounded-lg px-3 py-1 text-xs font-medium capitalize transition cursor-pointer ${
+                                  relationshipType === rel
+                                    ? "bg-[#D4A359] text-[#090D0B]"
+                                    : "text-[#A6A095] hover:text-[#F5F2EB]"
+                                }`}
+                              >
+                                {rel}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="rounded-2xl border border-[#D4A359]/28 bg-[#D4A359]/8 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E6C385]">
+                          Planting First Founding Ancestor
+                        </p>
+                        <p className="mt-1.5 text-xs text-[#F5F2EB]/85">
+                          This member will anchor Generation I (Roots) of your new shared family tree.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Name & Vital Fields */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -816,6 +874,56 @@ export function AddMemberWizard({
                         ))}
                       </div>
                     </div>
+                    {/* Inline Family Invite Code Verification */}
+                    {inviteRequired && (
+                      <div className="rounded-2xl border border-[#D4A359]/28 bg-[#D4A359]/8 p-3.5 space-y-2">
+                        {!editingCode && savedFamilyCode ? (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-300">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Family Invite Code saved on this device
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFamilyCodeInput(savedFamilyCode);
+                                setEditingCode(true);
+                              }}
+                              className="text-[11px] text-[#E6C385] underline-offset-2 hover:underline cursor-pointer"
+                            >
+                              Change Code
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <label className="flex items-center gap-1.5 text-xs font-medium text-[#E6C385]">
+                              <KeyRound className="h-3.5 w-3.5" />
+                              Family Invite Code *
+                            </label>
+                            <input
+                              type="password"
+                              value={familyCodeInput}
+                              onChange={(e) => {
+                                setFamilyCodeInput(e.target.value);
+                                setSubmitError(null);
+                              }}
+                              placeholder="Enter your Family Invite Code to publish to the shared tree..."
+                              className="w-full rounded-xl border border-[#D4A359]/30 bg-[#090D0B] px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
+                            />
+                            <p className="text-[10.5px] text-[#A6A095]">
+                              Saved automatically on this device after your first contribution.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {submitError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/12 px-3.5 py-2.5 text-xs text-red-200">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                        <span>{submitError}</span>
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -826,8 +934,9 @@ export function AddMemberWizard({
               {step > 1 ? (
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setStep((s) => (s === 3 ? 2 : 1))}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/15 px-4 py-2 text-xs font-medium text-[#F5F2EB] transition hover:border-[#D4A359]/45 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/15 px-4 py-2 text-xs font-medium text-[#F5F2EB] transition hover:border-[#D4A359]/45 disabled:opacity-40 cursor-pointer"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   Back
@@ -835,7 +944,7 @@ export function AddMemberWizard({
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-[11px] text-[#A6A095]">
                   <Sparkles className="h-3.5 w-3.5 text-[#D4A359]" />
-                  Saves instantly to your local archive
+                  Syncs live to your shared family archive
                 </span>
               )}
 
@@ -852,11 +961,16 @@ export function AddMemberWizard({
               ) : (
                 <button
                   type="button"
-                  onClick={handleFinish}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#D4A359] px-5 py-2 text-xs font-semibold text-[#090D0B] shadow-[0_0_24px_rgba(212,163,89,0.35)] transition hover:bg-[#E6C385] cursor-pointer"
+                  disabled={isSubmitting}
+                  onClick={() => void handleFinish()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#D4A359] px-5 py-2 text-xs font-semibold text-[#090D0B] shadow-[0_0_24px_rgba(212,163,89,0.35)] transition hover:bg-[#E6C385] disabled:opacity-50 cursor-pointer"
                 >
-                  <Check className="h-3.5 w-3.5" />
-                  Plant on the Tree
+                  {isSubmitting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  {isSubmitting ? "Saving to Cloud..." : "Plant on the Tree"}
                 </button>
               )}
             </div>

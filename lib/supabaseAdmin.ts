@@ -88,6 +88,27 @@ export function familyMemberToRow(member: FamilyMember): FamilyMemberRow {
 }
 
 /**
+ * Fetches the authoritative ordered list of all family members from Supabase.
+ */
+export async function fetchAllFamilyMembers(
+  supabase: SupabaseClient
+): Promise<{ members: FamilyMember[]; error?: string }> {
+  const { data, error } = await supabase
+    .from("family_members")
+    .select("*")
+    .order("generation", { ascending: true })
+    .order("birth_year", { ascending: true });
+
+  if (error) {
+    return { members: [], error: error.message };
+  }
+
+  return {
+    members: ((data ?? []) as FamilyMemberRow[]).map(rowToFamilyMember),
+  };
+}
+
+/**
  * Uploads a raster base64 data URL (JPEG/PNG/WebP/GIF) to the Supabase `family-media`
  * storage bucket and returns its public URL. Passes through existing HTTP or inline SVG URLs.
  */
@@ -117,12 +138,15 @@ export async function maybeUploadMediaToBucket(
     });
 
   if (error) {
-    // Graceful fallback to inline data URL if storage upload fails
-    return dataOrUrl;
+    throw new Error(`Failed to upload image to family-media: ${error.message}`);
   }
 
   const { data } = supabase.storage.from("family-media").getPublicUrl(filePath);
   return data.publicUrl || dataOrUrl;
+}
+
+export function extractFamilyCode(headers: Headers): string | null {
+  return headers.get("x-family-code") ?? headers.get("x-access-code");
 }
 
 export function verifyAccessCode(
@@ -137,7 +161,7 @@ export function verifyAccessCode(
     if (suppliedCode?.trim() === adminCode) return { ok: true };
     return {
       ok: false,
-      error: "Admin curator code required to reset or overwrite the archive.",
+      error: "Invalid Admin Curator Code. Please enter your Curator Code to perform this action.",
     };
   }
 
@@ -148,6 +172,6 @@ export function verifyAccessCode(
   }
   return {
     ok: false,
-    error: "Please enter your Family Invite Code in Settings to save changes to the cloud archive.",
+    error: "Invalid Family Invite Code. Please check the code and try again.",
   };
 }

@@ -2,16 +2,33 @@
 
 import { ChangeEvent, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Calendar, ImagePlus, MapPin, X } from "lucide-react";
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  ImagePlus,
+  KeyRound,
+  Loader2,
+  MapPin,
+  X,
+} from "lucide-react";
 import { FamilyMember, MemoryPhoto } from "@/types/family";
 
 interface LifeStoriesTabProps {
   member: FamilyMember;
-  onAddMemoryPhoto: (memberId: string, photo: MemoryPhoto) => void;
+  inviteRequired: boolean;
+  savedFamilyCode: string;
+  onAddMemoryPhoto: (
+    memberId: string,
+    photo: MemoryPhoto,
+    familyCode: string
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export function LifeStoriesTab({
   member,
+  inviteRequired,
+  savedFamilyCode,
   onAddMemoryPhoto,
 }: LifeStoriesTabProps) {
   const [lightboxPhoto, setLightboxPhoto] = useState<MemoryPhoto | null>(null);
@@ -20,6 +37,11 @@ export function LifeStoriesTab({
   const [year, setYear] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  const [codeInput, setCodeInput] = useState(savedFamilyCode);
+  const [editingCode, setEditingCode] = useState(!savedFamilyCode);
+  const [isSaving, setIsSaving] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -27,20 +49,39 @@ export function LifeStoriesTab({
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setPreviewUrl(reader.result);
+        setUploadError(null);
       }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSaveMemory = () => {
-    if (!previewUrl) return;
+  const handleSaveMemory = async () => {
+    if (!previewUrl || isSaving) return;
+    const effectiveCode = (editingCode ? codeInput : savedFamilyCode || codeInput).trim();
+    if (inviteRequired && !effectiveCode) {
+      setEditingCode(true);
+      setUploadError("Please enter your Family Invite Code to upload memories.");
+      return;
+    }
+
+    setIsSaving(true);
+    setUploadError(null);
     const photo: MemoryPhoto = {
       id: `mem-${Date.now()}`,
       url: previewUrl,
       caption: caption.trim() || `Memory with ${member.firstName}`,
       year: year ? Number(year) : undefined,
     };
-    onAddMemoryPhoto(member.id, photo);
+
+    const result = await onAddMemoryPhoto(member.id, photo, effectiveCode);
+    setIsSaving(false);
+
+    if (!result.ok) {
+      setUploadError(result.error || "Failed to save memory photo to Supabase.");
+      setEditingCode(true);
+      return;
+    }
+
     setPreviewUrl(null);
     setCaption("");
     setYear("");
@@ -94,7 +135,11 @@ export function LifeStoriesTab({
           </h3>
           <button
             type="button"
-            onClick={() => setShowUploadForm((prev) => !prev)}
+            onClick={() => {
+              setShowUploadForm((prev) => !prev);
+              setUploadError(null);
+              if (!savedFamilyCode) setEditingCode(true);
+            }}
             className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 px-3 py-1 text-[11px] font-medium text-[#E6C385] transition hover:bg-[#D4A359]/20 cursor-pointer"
           >
             <ImagePlus className="h-3.5 w-3.5" />
@@ -153,14 +198,60 @@ export function LifeStoriesTab({
                   />
                 </div>
 
+                {/* Inline Family Invite Code Prompt */}
+                {inviteRequired && (
+                  <div className="rounded-lg border border-[#D4A359]/20 bg-[#090D0B]/70 px-3 py-2">
+                    {!editingCode && savedFamilyCode ? (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-300">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Family Invite Code saved
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCodeInput(savedFamilyCode);
+                            setEditingCode(true);
+                          }}
+                          className="text-[#D4A359] hover:text-[#E6C385] cursor-pointer"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="h-3.5 w-3.5 shrink-0 text-[#D4A359]" />
+                        <input
+                          type="password"
+                          value={codeInput}
+                          onChange={(e) => {
+                            setCodeInput(e.target.value);
+                            setUploadError(null);
+                          }}
+                          placeholder="Enter Family Invite Code..."
+                          className="w-full bg-transparent text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/60 focus:outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {uploadError && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-500/35 bg-red-500/12 px-3 py-2 text-[11.5px] text-red-200">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    disabled={!previewUrl}
-                    onClick={handleSaveMemory}
-                    className="rounded-full bg-[#D4A359] px-4 py-1.5 text-xs font-semibold text-[#090D0B] transition hover:bg-[#E6C385] disabled:opacity-40 cursor-pointer"
+                    disabled={!previewUrl || isSaving}
+                    onClick={() => void handleSaveMemory()}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#D4A359] px-4 py-1.5 text-xs font-semibold text-[#090D0B] transition hover:bg-[#E6C385] disabled:opacity-40 cursor-pointer"
                   >
-                    Save to Archive
+                    {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {isSaving ? "Uploading..." : "Save to Cloud Archive"}
                   </button>
                 </div>
               </div>

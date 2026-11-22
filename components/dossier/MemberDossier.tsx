@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
   BookOpen,
+  CheckCircle2,
   Compass,
   HeartPulse,
+  KeyRound,
+  Loader2,
   MapPin,
   MessageCircleHeart,
   Sparkles,
@@ -32,13 +36,20 @@ type DossierTab = "stories" | "beliefs" | "health" | "echo";
 interface MemberDossierProps {
   member: FamilyMember | null;
   allMembers: FamilyMember[];
+  inviteRequired: boolean;
+  savedFamilyCode: string;
   onClose: () => void;
   onSelectMember: (id: string) => void;
-  onAddMemoryPhoto: (memberId: string, photo: MemoryPhoto) => void;
+  onAddMemoryPhoto: (
+    memberId: string,
+    photo: MemoryPhoto,
+    familyCode: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   onUpdateSpiritAnimal: (
     memberId: string,
-    animal: SpiritAnimalType | undefined
-  ) => void;
+    animal: SpiritAnimalType | undefined,
+    familyCode: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   onQuickAddRelative: (memberId: string) => void;
 }
 
@@ -52,6 +63,8 @@ const TABS: Array<{ id: DossierTab; label: string; icon: typeof BookOpen }> = [
 export function MemberDossier({
   member,
   allMembers,
+  inviteRequired,
+  savedFamilyCode,
   onClose,
   onSelectMember,
   onAddMemoryPhoto,
@@ -60,6 +73,10 @@ export function MemberDossier({
 }: MemberDossierProps) {
   const [activeTab, setActiveTab] = useState<DossierTab>("stories");
   const [spiritMenuOpen, setSpiritMenuOpen] = useState(false);
+  const [spiritCodeInput, setSpiritCodeInput] = useState(savedFamilyCode);
+  const [editingSpiritCode, setEditingSpiritCode] = useState(!savedFamilyCode);
+  const [savingSpirit, setSavingSpirit] = useState(false);
+  const [spiritError, setSpiritError] = useState<string | null>(null);
 
   const byId = new Map(allMembers.map((m) => [m.id, m]));
   const parents = member
@@ -77,6 +94,31 @@ export function MemberDossier({
         .map((id) => byId.get(id))
         .filter((m): m is FamilyMember => Boolean(m))
     : [];
+
+  const handleSelectSpirit = async (animal: SpiritAnimalType | undefined) => {
+    if (!member || savingSpirit) return;
+    const effectiveCode = (
+      editingSpiritCode ? spiritCodeInput : savedFamilyCode || spiritCodeInput
+    ).trim();
+
+    if (inviteRequired && !effectiveCode) {
+      setEditingSpiritCode(true);
+      setSpiritError("Enter your Family Invite Code below to save this guardian.");
+      return;
+    }
+
+    setSavingSpirit(true);
+    setSpiritError(null);
+    const res = await onUpdateSpiritAnimal(member.id, animal, effectiveCode);
+    setSavingSpirit(false);
+
+    if (!res.ok) {
+      setSpiritError(res.error || "Unable to update spirit animal.");
+      setEditingSpiritCode(true);
+      return;
+    }
+    setSpiritMenuOpen(false);
+  };
 
   return (
     <AnimatePresence>
@@ -158,7 +200,11 @@ export function MemberDossier({
               {/* Spirit Animal of Light Badge / Switcher */}
               <button
                 type="button"
-                onClick={() => setSpiritMenuOpen((v) => !v)}
+                onClick={() => {
+                  setSpiritMenuOpen((v) => !v);
+                  setSpiritError(null);
+                  if (!savedFamilyCode) setEditingSpiritCode(true);
+                }}
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition cursor-pointer ${
                   member.spiritAnimal
                     ? "border border-[#E6C385]/45 bg-[#D4A359]/14 text-[#F2DCAA] hover:bg-[#D4A359]/22"
@@ -182,40 +228,85 @@ export function MemberDossier({
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#D4A359]/22 bg-[#0B110E]/85 p-2.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdateSpiritAnimal(member.id, undefined);
-                        setSpiritMenuOpen(false);
-                      }}
-                      className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer ${
-                        !member.spiritAnimal
-                          ? "bg-[#D4A359] text-[#090D0B] font-semibold"
-                          : "border border-[#F5F2EB]/12 text-[#A6A095] hover:text-[#F5F2EB]"
-                      }`}
-                    >
-                      None
-                    </button>
-                    {(
-                      Object.keys(SPIRIT_ANIMAL_META) as SpiritAnimalType[]
-                    ).map((key) => (
+                  <div className="mt-2.5 space-y-2.5 rounded-xl border border-[#D4A359]/22 bg-[#0B110E]/85 p-3">
+                    {inviteRequired && (
+                      <div className="rounded-lg border border-[#D4A359]/20 bg-[#090D0B]/75 px-2.5 py-1.5">
+                        {!editingSpiritCode && savedFamilyCode ? (
+                          <div className="flex items-center justify-between text-[10.5px]">
+                            <span className="inline-flex items-center gap-1 text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Invite code ready
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSpiritCodeInput(savedFamilyCode);
+                                setEditingSpiritCode(true);
+                              }}
+                              className="text-[#D4A359] hover:text-[#E6C385] cursor-pointer"
+                            >
+                              Change
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="h-3.5 w-3.5 shrink-0 text-[#D4A359]" />
+                            <input
+                              type="password"
+                              value={spiritCodeInput}
+                              onChange={(e) => {
+                                setSpiritCodeInput(e.target.value);
+                                setSpiritError(null);
+                              }}
+                              placeholder="Enter Family Invite Code..."
+                              className="w-full bg-transparent text-[11px] text-[#F5F2EB] placeholder:text-[#A6A095]/60 focus:outline-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
-                        key={key}
                         type="button"
-                        onClick={() => {
-                          onUpdateSpiritAnimal(member.id, key);
-                          setSpiritMenuOpen(false);
-                        }}
-                        className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer ${
-                          member.spiritAnimal === key
+                        disabled={savingSpirit}
+                        onClick={() => void handleSelectSpirit(undefined)}
+                        className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer disabled:opacity-50 ${
+                          !member.spiritAnimal
                             ? "bg-[#D4A359] text-[#090D0B] font-semibold"
-                            : "border border-[#D4A359]/25 bg-[#D4A359]/8 text-[#E6C385] hover:bg-[#D4A359]/18"
+                            : "border border-[#F5F2EB]/12 text-[#A6A095] hover:text-[#F5F2EB]"
                         }`}
                       >
-                        {SPIRIT_ANIMAL_META[key].label}
+                        None
                       </button>
-                    ))}
+                      {(
+                        Object.keys(SPIRIT_ANIMAL_META) as SpiritAnimalType[]
+                      ).map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          disabled={savingSpirit}
+                          onClick={() => void handleSelectSpirit(key)}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer disabled:opacity-50 ${
+                            member.spiritAnimal === key
+                              ? "bg-[#D4A359] text-[#090D0B] font-semibold"
+                              : "border border-[#D4A359]/25 bg-[#D4A359]/8 text-[#E6C385] hover:bg-[#D4A359]/18"
+                          }`}
+                        >
+                          {savingSpirit && (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          )}
+                          {SPIRIT_ANIMAL_META[key].label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {spiritError && (
+                      <div className="flex items-start gap-1.5 rounded-lg border border-red-500/35 bg-red-500/12 px-2.5 py-1.5 text-[11px] text-red-200">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                        <span>{spiritError}</span>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -310,6 +401,8 @@ export function MemberDossier({
                 {activeTab === "stories" && (
                   <LifeStoriesTab
                     member={member}
+                    inviteRequired={inviteRequired}
+                    savedFamilyCode={savedFamilyCode}
                     onAddMemoryPhoto={onAddMemoryPhoto}
                   />
                 )}

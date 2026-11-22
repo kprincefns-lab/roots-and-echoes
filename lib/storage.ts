@@ -1,59 +1,51 @@
 import { FamilyArchiveExport, FamilyMember } from "@/types/family";
-import { SEED_FAMILY } from "@/data/seedFamily";
 
-const STORAGE_KEY = "roots-and-echoes:archive:v1";
+const LEGACY_ARCHIVE_KEY = "roots-and-echoes:archive:v1";
+const ACCESS_CODE_KEY = "roots-and-echoes:family-code:v1";
 
-export function loadFamilyArchive(): FamilyMember[] {
-  if (typeof window === "undefined") {
-    return SEED_FAMILY;
-  }
+/**
+ * Purges any legacy cached family_members array from localStorage so visitors
+ * always read the live, authoritative family tree from Supabase via GET /api/family.
+ */
+export function purgeLegacyLocalArchive(): void {
+  if (typeof window === "undefined") return;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return SEED_FAMILY;
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const members = parsed as FamilyMember[];
-      const hasAnySpirit = members.some((m) => Boolean(m.spiritAnimal));
-      if (!hasAnySpirit) {
-        const seedSpiritMap = new Map(
-          SEED_FAMILY.filter((s) => s.spiritAnimal).map((s) => [
-            s.id,
-            s.spiritAnimal,
-          ])
-        );
-        return members.map((m) =>
-          seedSpiritMap.has(m.id)
-            ? { ...m, spiritAnimal: seedSpiritMap.get(m.id) }
-            : m
-        );
-      }
-      return members;
-    }
-    return SEED_FAMILY;
+    window.localStorage.removeItem(LEGACY_ARCHIVE_KEY);
   } catch {
-    return SEED_FAMILY;
+    // Ignore storage errors
   }
 }
 
-export function saveFamilyArchive(members: FamilyMember[]): boolean {
-  if (typeof window === "undefined") return false;
+export function loadSavedFamilyCode(): string {
+  if (typeof window === "undefined") return "";
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
-    return true;
+    return window.localStorage.getItem(ACCESS_CODE_KEY) ?? "";
   } catch {
-    return false;
+    return "";
   }
 }
 
-export function resetFamilyArchive(): FamilyMember[] {
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignore storage errors
+export function saveFamilyCode(code: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const trimmed = code.trim();
+    if (trimmed) {
+      window.localStorage.setItem(ACCESS_CODE_KEY, trimmed);
+    } else {
+      window.localStorage.removeItem(ACCESS_CODE_KEY);
     }
+  } catch {
+    // Ignore storage errors
   }
-  return SEED_FAMILY;
+}
+
+export function clearSavedFamilyCode(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(ACCESS_CODE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 export function buildArchiveExport(members: FamilyMember[]): FamilyArchiveExport {
