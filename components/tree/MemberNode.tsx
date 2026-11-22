@@ -168,7 +168,7 @@ export function MemberNode({
         </mesh>
       )}
 
-      {/* Portrait medallion + sculptural glass label */}
+      {/* Portrait medallion (or clean monogram for locked profiles) + sculptural glass label */}
       <Html
         position={[0, orbRadius + 0.54, 0]}
         center
@@ -180,40 +180,66 @@ export function MemberNode({
           transition: "opacity 320ms ease, transform 240ms ease",
         }}
       >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(member.id);
-          }}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          className={`group flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-left transition-all duration-300 cursor-pointer ${
-            isSelected
-              ? "bg-[#151F19]/95 border border-[#E6C385]/70 shadow-[0_0_24px_rgba(212,163,89,0.4)] scale-105"
-              : hovered
-                ? "bg-[#121B16]/90 border border-[#D4A359]/50 shadow-[0_8px_24px_rgba(0,0,0,0.6)] scale-105"
-                : "bg-[#0D1410]/78 border border-[#D4A359]/22 hover:border-[#D4A359]/45"
-          } backdrop-blur-md`}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={member.portraitUrl}
-            alt={`${member.firstName} ${member.lastName}`}
-            className={`h-7 w-7 rounded-full object-cover border ${
-              isSelected ? "border-[#E6C385]" : "border-[#D4A359]/40"
-            }`}
-          />
-          <div className="leading-tight whitespace-nowrap">
-            <div className="font-editorial text-[14px] tracking-wide text-[#F5F2EB]">
-              {member.firstName} {member.lastName}
-            </div>
-            <div className="text-[9.5px] tracking-wider uppercase text-[#D4A359]/80">
-              {member.birthYear}
-              {member.passingYear ? ` – ${member.passingYear}` : ""}
-            </div>
-          </div>
-        </button>
+        {(() => {
+          const isLocked =
+            member.accessStatus === "locked" || member.accessStatus === "pending";
+          const initials = `${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toUpperCase();
+
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(member.id);
+              }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+              className={`group flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-left transition-all duration-300 cursor-pointer ${
+                isSelected
+                  ? "bg-[#151F19]/95 border border-[#E6C385]/70 shadow-[0_0_24px_rgba(212,163,89,0.4)] scale-105"
+                  : hovered
+                    ? "bg-[#121B16]/90 border border-[#D4A359]/50 shadow-[0_8px_24px_rgba(0,0,0,0.6)] scale-105"
+                    : "bg-[#0D1410]/78 border border-[#D4A359]/22 hover:border-[#D4A359]/45"
+              } backdrop-blur-md`}
+            >
+              {!isLocked && member.portraitUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={member.portraitUrl}
+                  alt={`${member.firstName} ${member.lastName}`}
+                  className={`h-7 w-7 rounded-full object-cover border ${
+                    isSelected ? "border-[#E6C385]" : "border-[#D4A359]/40"
+                  }`}
+                />
+              ) : (
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border bg-[#121B16] font-editorial text-[11px] tracking-wider text-[#E6C385] ${
+                    isSelected ? "border-[#E6C385]" : "border-[#D4A359]/35"
+                  }`}
+                >
+                  {initials}
+                </span>
+              )}
+              <div className="leading-tight whitespace-nowrap">
+                <div className="font-editorial text-[14px] tracking-wide text-[#F5F2EB]">
+                  {member.firstName} {member.lastName}
+                </div>
+                {!isLocked && member.birthYear > 0 ? (
+                  <div className="text-[9.5px] tracking-wider uppercase text-[#D4A359]/80">
+                    {member.birthYear}
+                    {member.passingYear ? ` – ${member.passingYear}` : ""}
+                  </div>
+                ) : (
+                  <div className="text-[9px] tracking-wider uppercase text-[#A6A095]/80">
+                    {member.accessStatus === "pending"
+                      ? "Request Pending"
+                      : "Private Profile"}
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })()}
       </Html>
     </group>
   );

@@ -6,17 +6,24 @@ import {
   AlertCircle,
   BookOpen,
   CheckCircle2,
+  Clock,
   Compass,
+  Globe,
   HeartPulse,
-  KeyRound,
   Loader2,
+  Lock,
   MapPin,
   MessageCircleHeart,
+  Pencil,
+  Send,
+  ShieldCheck,
   Sparkles,
+  UserCheck,
   UserPlus,
   X,
 } from "lucide-react";
 import {
+  AccessRequestType,
   FamilyMember,
   MemoryPhoto,
   SPIRIT_ANIMAL_META,
@@ -36,19 +43,25 @@ type DossierTab = "stories" | "beliefs" | "health" | "echo";
 interface MemberDossierProps {
   member: FamilyMember | null;
   allMembers: FamilyMember[];
-  inviteRequired: boolean;
-  savedFamilyCode: string;
   onClose: () => void;
   onSelectMember: (id: string) => void;
   onAddMemoryPhoto: (
     memberId: string,
-    photo: MemoryPhoto,
-    familyCode: string
+    photo: MemoryPhoto
   ) => Promise<{ ok: boolean; error?: string }>;
   onUpdateSpiritAnimal: (
     memberId: string,
-    animal: SpiritAnimalType | undefined,
-    familyCode: string
+    animal: SpiritAnimalType | undefined
+  ) => Promise<{ ok: boolean; error?: string }>;
+  onTogglePublicToFamily: (
+    memberId: string,
+    isPublic: boolean
+  ) => Promise<{ ok: boolean; error?: string }>;
+  onEditMember: (member: FamilyMember) => void;
+  onRequestAccess: (
+    memberId: string,
+    note: string,
+    requestType: AccessRequestType
   ) => Promise<{ ok: boolean; error?: string }>;
   onQuickAddRelative: (memberId: string) => void;
 }
@@ -63,20 +76,26 @@ const TABS: Array<{ id: DossierTab; label: string; icon: typeof BookOpen }> = [
 export function MemberDossier({
   member,
   allMembers,
-  inviteRequired,
-  savedFamilyCode,
   onClose,
   onSelectMember,
   onAddMemoryPhoto,
   onUpdateSpiritAnimal,
+  onTogglePublicToFamily,
+  onEditMember,
+  onRequestAccess,
   onQuickAddRelative,
 }: MemberDossierProps) {
   const [activeTab, setActiveTab] = useState<DossierTab>("stories");
   const [spiritMenuOpen, setSpiritMenuOpen] = useState(false);
-  const [spiritCodeInput, setSpiritCodeInput] = useState(savedFamilyCode);
-  const [editingSpiritCode, setEditingSpiritCode] = useState(!savedFamilyCode);
   const [savingSpirit, setSavingSpirit] = useState(false);
-  const [spiritError, setSpiritError] = useState<string | null>(null);
+  const [togglingPublic, setTogglingPublic] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Locked profile request state
+  const [requestNote, setRequestNote] = useState("");
+  const [requestingType, setRequestingType] =
+    useState<AccessRequestType | null>(null);
+  const [requestSuccess, setRequestSuccess] = useState<string | null>(null);
 
   const byId = new Map(allMembers.map((m) => [m.id, m]));
   const parents = member
@@ -95,30 +114,58 @@ export function MemberDossier({
         .filter((m): m is FamilyMember => Boolean(m))
     : [];
 
+  const isLocked =
+    member?.accessStatus === "locked" || member?.accessStatus === "pending";
+
   const handleSelectSpirit = async (animal: SpiritAnimalType | undefined) => {
     if (!member || savingSpirit) return;
-    const effectiveCode = (
-      editingSpiritCode ? spiritCodeInput : savedFamilyCode || spiritCodeInput
-    ).trim();
-
-    if (inviteRequired && !effectiveCode) {
-      setEditingSpiritCode(true);
-      setSpiritError("Enter your Family Invite Code below to save this guardian.");
-      return;
-    }
-
     setSavingSpirit(true);
-    setSpiritError(null);
-    const res = await onUpdateSpiritAnimal(member.id, animal, effectiveCode);
+    setActionError(null);
+    const res = await onUpdateSpiritAnimal(member.id, animal);
     setSavingSpirit(false);
-
     if (!res.ok) {
-      setSpiritError(res.error || "Unable to update spirit animal.");
-      setEditingSpiritCode(true);
+      setActionError(res.error || "Unable to update spirit animal.");
       return;
     }
     setSpiritMenuOpen(false);
   };
+
+  const handleTogglePublic = async () => {
+    if (!member || togglingPublic) return;
+    setTogglingPublic(true);
+    setActionError(null);
+    const res = await onTogglePublicToFamily(
+      member.id,
+      !member.isPublicToFamily
+    );
+    setTogglingPublic(false);
+    if (!res.ok) {
+      setActionError(res.error || "Unable to update visibility.");
+    }
+  };
+
+  const handleSendRequest = async (type: AccessRequestType) => {
+    if (!member || requestingType) return;
+    setRequestingType(type);
+    setActionError(null);
+    setRequestSuccess(null);
+    const res = await onRequestAccess(member.id, requestNote.trim(), type);
+    setRequestingType(null);
+    if (!res.ok) {
+      setActionError(res.error || "Unable to submit request.");
+      return;
+    }
+    setRequestNote("");
+    setRequestSuccess(
+      type === "claim"
+        ? "Ownership claim sent to the Family Curator."
+        : "Information request sent to the profile owner."
+    );
+  };
+
+  const initials = member
+    ? `${member.firstName[0] ?? ""}${member.lastName[0] ?? ""}`.toUpperCase()
+    : "";
 
   return (
     <AnimatePresence>
@@ -134,14 +181,25 @@ export function MemberDossier({
           {/* Top Header */}
           <div className="relative border-b border-[#D4A359]/16 px-6 pt-5 pb-4">
             <div className="absolute right-4 top-4 flex items-center gap-1.5">
+              {!isLocked && member.canEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEditMember(member)}
+                  title="Edit this profile"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/40 bg-[#D4A359]/16 px-3 py-1.5 text-[11px] font-medium text-[#F2DCAA] transition hover:bg-[#D4A359]/28 cursor-pointer"
+                >
+                  <Pencil className="h-3 w-3" />
+                  <span>Edit Profile</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onQuickAddRelative(member.id)}
                 title={`Add relative linked to ${member.firstName}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 px-3 py-1.5 text-[11px] font-medium text-[#E6C385] transition hover:bg-[#D4A359]/20 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 px-2.5 py-1.5 text-[11px] font-medium text-[#E6C385] transition hover:bg-[#D4A359]/20 cursor-pointer"
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Link Relative</span>
+                <span className="hidden sm:inline">Link</span>
               </button>
               <button
                 type="button"
@@ -153,16 +211,25 @@ export function MemberDossier({
               </button>
             </div>
 
-            <div className="flex items-center gap-4 pr-20">
-              {/* Circular Portrait Medallion */}
+            <div className="flex items-center gap-4 pr-24">
+              {/* Circular Portrait or Monogram Medallion */}
               <div className="relative shrink-0">
                 <div className="h-20 w-20 rounded-full p-[2px] bg-gradient-to-br from-[#E6C385] via-[#D4A359]/60 to-transparent shadow-[0_0_28px_rgba(212,163,89,0.28)]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={member.portraitUrl}
-                    alt={`${member.firstName} ${member.lastName}`}
-                    className="h-full w-full rounded-full object-cover bg-[#090D0B]"
-                  />
+                  {!isLocked && member.portraitUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={member.portraitUrl}
+                      alt={`${member.firstName} ${member.lastName}`}
+                      className="h-full w-full rounded-full object-cover bg-[#090D0B]"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-[#0E1612]">
+                      <span className="font-editorial text-2xl tracking-wider text-[#E6C385]">
+                        {initials}
+                      </span>
+                      <Lock className="mt-0.5 h-3 w-3 text-[#D4A359]/75" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -173,146 +240,149 @@ export function MemberDossier({
                 <h2 className="mt-0.5 truncate font-editorial text-3xl leading-tight text-[#F5F2EB]">
                   {member.firstName} {member.lastName}
                 </h2>
-                {member.maidenName && (
+                {!isLocked && member.maidenName && (
                   <p className="text-xs italic text-[#A6A095]">
                     née {member.maidenName}
                   </p>
                 )}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-[#E6C385]/90">
-                  <span>{getMemberLifespanLabel(member)}</span>
-                  {member.birthPlace && (
-                    <span className="inline-flex items-center gap-1 text-[#A6A095]">
-                      <MapPin className="h-3 w-3 text-[#D4A359]/70" />
-                      {member.birthPlace}
+                {!isLocked ? (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-[#E6C385]/90">
+                    <span>{getMemberLifespanLabel(member)}</span>
+                    {member.birthPlace && (
+                      <span className="inline-flex items-center gap-1 text-[#A6A095]">
+                        <MapPin className="h-3 w-3 text-[#D4A359]/70" />
+                        {member.birthPlace}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-[#A6A095]">
+                    <Lock className="h-3 w-3 text-[#D4A359]" />
+                    <span>
+                      {member.accessStatus === "pending"
+                        ? "Access Request Pending"
+                        : "Private Family Profile"}
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              {member.occupation ? (
-                <p className="text-xs text-[#A6A095]">{member.occupation}</p>
-              ) : (
-                <span />
-              )}
+            {!isLocked && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                {member.occupation ? (
+                  <p className="text-xs text-[#A6A095]">{member.occupation}</p>
+                ) : (
+                  <span />
+                )}
 
-              {/* Spirit Animal of Light Badge / Switcher */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSpiritMenuOpen((v) => !v);
-                  setSpiritError(null);
-                  if (!savedFamilyCode) setEditingSpiritCode(true);
-                }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition cursor-pointer ${
-                  member.spiritAnimal
-                    ? "border border-[#E6C385]/45 bg-[#D4A359]/14 text-[#F2DCAA] hover:bg-[#D4A359]/22"
-                    : "border border-[#F5F2EB]/12 bg-[#0B110E]/70 text-[#A6A095] hover:border-[#D4A359]/40 hover:text-[#E6C385]"
-                }`}
-              >
-                <Sparkles className="h-3 w-3 text-[#E6C385]" />
-                <span>
-                  {member.spiritAnimal
-                    ? SPIRIT_ANIMAL_META[member.spiritAnimal].label
-                    : "Choose Spirit Animal"}
-                </span>
-              </button>
-            </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Owner Quick Public Toggle */}
+                  {member.canEdit && (
+                    <button
+                      type="button"
+                      disabled={togglingPublic}
+                      onClick={() => void handleTogglePublic()}
+                      title="Toggle sharing with all logged-in family members"
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition cursor-pointer ${
+                        member.isPublicToFamily
+                          ? "border border-emerald-500/40 bg-emerald-500/14 text-emerald-200"
+                          : "border border-[#F5F2EB]/12 bg-[#0B110E]/70 text-[#A6A095] hover:border-[#D4A359]/40"
+                      }`}
+                    >
+                      {member.isPublicToFamily ? (
+                        <Globe className="h-3 w-3 text-emerald-400" />
+                      ) : (
+                        <Lock className="h-3 w-3 text-[#D4A359]" />
+                      )}
+                      <span>
+                        {member.isPublicToFamily
+                          ? "Shared with Family"
+                          : "Private"}
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Spirit Animal Badge / Switcher (editable for owner/curator) */}
+                  {member.canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSpiritMenuOpen((v) => !v);
+                        setActionError(null);
+                      }}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition cursor-pointer ${
+                        member.spiritAnimal
+                          ? "border border-[#E6C385]/45 bg-[#D4A359]/14 text-[#F2DCAA] hover:bg-[#D4A359]/22"
+                          : "border border-[#F5F2EB]/12 bg-[#0B110E]/70 text-[#A6A095] hover:border-[#D4A359]/40 hover:text-[#E6C385]"
+                      }`}
+                    >
+                      <Sparkles className="h-3 w-3 text-[#E6C385]" />
+                      <span>
+                        {member.spiritAnimal
+                          ? SPIRIT_ANIMAL_META[member.spiritAnimal].label
+                          : "Spirit Animal"}
+                      </span>
+                    </button>
+                  ) : (
+                    member.spiritAnimal && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E6C385]/35 bg-[#D4A359]/10 px-2.5 py-1 text-[10.5px] text-[#F2DCAA]">
+                        <Sparkles className="h-3 w-3 text-[#E6C385]" />
+                        {SPIRIT_ANIMAL_META[member.spiritAnimal].label}
+                      </span>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
 
             <AnimatePresence>
-              {spiritMenuOpen && (
+              {!isLocked && spiritMenuOpen && member.canEdit && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-2.5 space-y-2.5 rounded-xl border border-[#D4A359]/22 bg-[#0B110E]/85 p-3">
-                    {inviteRequired && (
-                      <div className="rounded-lg border border-[#D4A359]/20 bg-[#090D0B]/75 px-2.5 py-1.5">
-                        {!editingSpiritCode && savedFamilyCode ? (
-                          <div className="flex items-center justify-between text-[10.5px]">
-                            <span className="inline-flex items-center gap-1 text-emerald-300">
-                              <CheckCircle2 className="h-3 w-3" />
-                              Invite code ready
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSpiritCodeInput(savedFamilyCode);
-                                setEditingSpiritCode(true);
-                              }}
-                              className="text-[#D4A359] hover:text-[#E6C385] cursor-pointer"
-                            >
-                              Change
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <KeyRound className="h-3.5 w-3.5 shrink-0 text-[#D4A359]" />
-                            <input
-                              type="password"
-                              value={spiritCodeInput}
-                              onChange={(e) => {
-                                setSpiritCodeInput(e.target.value);
-                                setSpiritError(null);
-                              }}
-                              placeholder="Enter Family Invite Code..."
-                              className="w-full bg-transparent text-[11px] text-[#F5F2EB] placeholder:text-[#A6A095]/60 focus:outline-none"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#D4A359]/22 bg-[#0B110E]/85 p-2.5">
+                    <button
+                      type="button"
+                      disabled={savingSpirit}
+                      onClick={() => void handleSelectSpirit(undefined)}
+                      className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer disabled:opacity-50 ${
+                        !member.spiritAnimal
+                          ? "bg-[#D4A359] text-[#090D0B] font-semibold"
+                          : "border border-[#F5F2EB]/12 text-[#A6A095] hover:text-[#F5F2EB]"
+                      }`}
+                    >
+                      None
+                    </button>
+                    {(
+                      Object.keys(SPIRIT_ANIMAL_META) as SpiritAnimalType[]
+                    ).map((key) => (
                       <button
+                        key={key}
                         type="button"
                         disabled={savingSpirit}
-                        onClick={() => void handleSelectSpirit(undefined)}
-                        className={`rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer disabled:opacity-50 ${
-                          !member.spiritAnimal
+                        onClick={() => void handleSelectSpirit(key)}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer disabled:opacity-50 ${
+                          member.spiritAnimal === key
                             ? "bg-[#D4A359] text-[#090D0B] font-semibold"
-                            : "border border-[#F5F2EB]/12 text-[#A6A095] hover:text-[#F5F2EB]"
+                            : "border border-[#D4A359]/25 bg-[#D4A359]/8 text-[#E6C385] hover:bg-[#D4A359]/18"
                         }`}
                       >
-                        None
+                        {savingSpirit && (
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        )}
+                        {SPIRIT_ANIMAL_META[key].label}
                       </button>
-                      {(
-                        Object.keys(SPIRIT_ANIMAL_META) as SpiritAnimalType[]
-                      ).map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          disabled={savingSpirit}
-                          onClick={() => void handleSelectSpirit(key)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] transition cursor-pointer disabled:opacity-50 ${
-                            member.spiritAnimal === key
-                              ? "bg-[#D4A359] text-[#090D0B] font-semibold"
-                              : "border border-[#D4A359]/25 bg-[#D4A359]/8 text-[#E6C385] hover:bg-[#D4A359]/18"
-                          }`}
-                        >
-                          {savingSpirit && (
-                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                          )}
-                          {SPIRIT_ANIMAL_META[key].label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {spiritError && (
-                      <div className="flex items-start gap-1.5 rounded-lg border border-red-500/35 bg-red-500/12 px-2.5 py-1.5 text-[11px] text-red-200">
-                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
-                        <span>{spiritError}</span>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Clickable Relationship Badges */}
+            {/* Clickable Relationship Badges (Names only — always visible for tree navigation) */}
             {(parents.length > 0 || partners.length > 0 || children.length > 0) && (
               <div className="mt-3.5 flex flex-wrap gap-1.5">
                 {parents.map((p) => (
@@ -357,68 +427,171 @@ export function MemberDossier({
               </div>
             )}
 
-            {/* Animated Tab Navigation */}
-            <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl border border-[#F5F2EB]/8 bg-[#090D0B]/65 p-1">
-              {TABS.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`relative flex flex-col items-center justify-center gap-1 rounded-lg py-2 text-[10.5px] font-medium transition cursor-pointer ${
-                      isActive
-                        ? "text-[#090D0B]"
-                        : "text-[#A6A095] hover:text-[#F5F2EB]"
-                    }`}
-                  >
-                    {isActive && (
-                      <motion.span
-                        layoutId="dossier-tab-pill"
-                        transition={{ type: "spring", stiffness: 360, damping: 30 }}
-                        className="absolute inset-0 rounded-lg bg-[#D4A359]"
-                      />
-                    )}
-                    <Icon className="relative z-10 h-3.5 w-3.5" />
-                    <span className="relative z-10 leading-none">{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Animated Tab Navigation (only when viewer has Full Access) */}
+            {!isLocked && (
+              <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl border border-[#F5F2EB]/8 bg-[#090D0B]/65 p-1">
+                {TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`relative flex flex-col items-center justify-center gap-1 rounded-lg py-2 text-[10.5px] font-medium transition cursor-pointer ${
+                        isActive
+                          ? "text-[#090D0B]"
+                          : "text-[#A6A095] hover:text-[#F5F2EB]"
+                      }`}
+                    >
+                      {isActive && (
+                        <motion.span
+                          layoutId="dossier-tab-pill"
+                          transition={{ type: "spring", stiffness: 360, damping: 30 }}
+                          className="absolute inset-0 rounded-lg bg-[#D4A359]"
+                        />
+                      )}
+                      <Icon className="relative z-10 h-3.5 w-3.5" />
+                      <span className="relative z-10 leading-none">
+                        {tab.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Scrollable Tab Content */}
-          <div className="archival-scroll flex-1 overflow-y-auto px-6 pt-5">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${member.id}-${activeTab}`}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.18 }}
-              >
-                {activeTab === "stories" && (
-                  <LifeStoriesTab
-                    member={member}
-                    inviteRequired={inviteRequired}
-                    savedFamilyCode={savedFamilyCode}
-                    onAddMemoryPhoto={onAddMemoryPhoto}
-                  />
+          {/* Body: Either Private Profile Request Gate OR Full 4-Tab Dossier */}
+          <div className="archival-scroll flex-1 overflow-y-auto px-6 pt-5 pb-6">
+            {actionError && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/12 px-3.5 py-2.5 text-xs text-red-200">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            {isLocked ? (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-[#D4A359]/22 bg-[#0C130F]/80 p-5 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#D4A359]/35 bg-[#D4A359]/10 text-[#E6C385]">
+                    {member.accessStatus === "pending" ? (
+                      <Clock className="h-5 w-5" />
+                    ) : (
+                      <ShieldCheck className="h-5 w-5" />
+                    )}
+                  </div>
+                  <h3 className="mt-3.5 font-editorial text-2xl text-[#F5F2EB]">
+                    Private Family Profile
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-[#A6A095]">
+                    To protect personal stories, photos, beliefs, and hereditary
+                    notes, profiles in Roots &amp; Echoes show only a relative&rsquo;s
+                    name by default until access is approved.
+                  </p>
+
+                  {requestSuccess && (
+                    <div className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>{requestSuccess}</span>
+                    </div>
+                  )}
+
+                  {member.accessStatus === "pending" ? (
+                    <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-[#D4A359]/35 bg-[#D4A359]/12 px-4 py-2 text-xs font-medium text-[#E6C385]">
+                      <Clock className="h-3.5 w-3.5" />
+                      Request Pending — Awaiting Approval
+                    </div>
+                  ) : (
+                    <div className="mt-5 space-y-3 text-left">
+                      <textarea
+                        rows={2}
+                        value={requestNote}
+                        onChange={(e) => setRequestNote(e.target.value)}
+                        placeholder={`Optional note to ${member.firstName}'s profile keeper (e.g., "Hi, it's cousin Alex!")...`}
+                        className="w-full rounded-xl border border-[#D4A359]/22 bg-[#090D0B]/80 px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={requestingType !== null}
+                        onClick={() => void handleSendRequest("view")}
+                        className="flex w-full items-center justify-center gap-2 rounded-full bg-[#D4A359] px-5 py-2.5 text-xs font-semibold text-[#090D0B] shadow-[0_8px_24px_rgba(212,163,89,0.32)] transition hover:bg-[#E6C385] disabled:opacity-50 cursor-pointer"
+                      >
+                        {requestingType === "view" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-3.5 w-3.5" />
+                        )}
+                        Request Information
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Claim Unowned / Curator-Seeded Profile */}
+                {!member.ownerEmail && (
+                  <div className="rounded-2xl border border-[#F5F2EB]/10 bg-[#0B110E]/70 p-4 space-y-2.5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-[#E6C385]">
+                      <UserCheck className="h-4 w-4" />
+                      Is this your profile?
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-[#A6A095]">
+                      This profile does not have an assigned owner yet. Request
+                      ownership from the Family Curator so you can edit details
+                      and approve who sees your story.
+                    </p>
+                    {member.claimPending ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 px-3 py-1.5 text-[11px] text-[#E6C385]">
+                        <Clock className="h-3 w-3" />
+                        Ownership Claim Pending
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={requestingType !== null}
+                        onClick={() => void handleSendRequest("claim")}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/35 bg-[#D4A359]/10 px-4 py-1.5 text-xs font-medium text-[#E6C385] transition hover:bg-[#D4A359]/20 disabled:opacity-50 cursor-pointer"
+                      >
+                        {requestingType === "claim" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <UserCheck className="h-3.5 w-3.5" />
+                        )}
+                        Claim This Profile
+                      </button>
+                    )}
+                  </div>
                 )}
-                {activeTab === "beliefs" && <BeliefsTab member={member} />}
-                {activeTab === "health" && (
-                  <HealthGeneticsTab key={member.id} member={member} />
-                )}
-                {activeTab === "echo" && (
-                  <DigitalCloneTab
-                    key={member.id}
-                    member={member}
-                    allMembers={allMembers}
-                  />
-                )}
-              </motion.div>
-            </AnimatePresence>
+              </div>
+            ) : (
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${member.id}-${activeTab}`}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  {activeTab === "stories" && (
+                    <LifeStoriesTab
+                      member={member}
+                      onAddMemoryPhoto={onAddMemoryPhoto}
+                    />
+                  )}
+                  {activeTab === "beliefs" && <BeliefsTab member={member} />}
+                  {activeTab === "health" && (
+                    <HealthGeneticsTab key={member.id} member={member} />
+                  )}
+                  {activeTab === "echo" && (
+                    <DigitalCloneTab
+                      key={member.id}
+                      member={member}
+                      allMembers={allMembers}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            )}
           </div>
         </motion.aside>
       )}

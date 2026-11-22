@@ -4,6 +4,12 @@ export type RelationshipLinkType = "child" | "partner" | "parent";
 
 export type SpiritAnimalType = "panther" | "bird" | "owl";
 
+export type AccessStatus = "locked" | "pending" | "approved";
+
+export type AccessRequestType = "view" | "claim";
+
+export type AccessRequestStatus = "pending" | "approved" | "declined";
+
 export const SPIRIT_ANIMAL_META: Record<
   SpiritAnimalType,
   { label: string; tagline: string }
@@ -81,6 +87,26 @@ export interface FamilyMember {
   beliefs: BeliefsProfile;
   health: HealthProfile;
   persona: PersonaProfile;
+  // Ownership & privacy metadata (server-enforced)
+  ownerEmail?: string | null;
+  submittedBy?: string | null;
+  approvedViewerEmails?: string[];
+  isPublicToFamily?: boolean;
+  accessStatus?: AccessStatus;
+  canEdit?: boolean;
+  claimPending?: boolean;
+}
+
+export interface AccessRequestRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  requesterEmail: string;
+  requesterName?: string | null;
+  note?: string | null;
+  requestType: AccessRequestType;
+  status: AccessRequestStatus;
+  createdAt: string;
 }
 
 export interface ChatMessage {

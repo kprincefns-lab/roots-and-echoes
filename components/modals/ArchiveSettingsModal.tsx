@@ -7,9 +7,10 @@ import {
   CheckCircle2,
   Cloud,
   Download,
-  HardDrive,
   KeyRound,
   Loader2,
+  LogOut,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Upload,
@@ -24,11 +25,13 @@ import {
 
 interface ArchiveSettingsModalProps {
   open: boolean;
+  viewerEmail: string;
+  isCurator: boolean;
   members: FamilyMember[];
-  storageSource: "supabase" | "local";
-  accessCode: string;
-  onAccessCodeChange: (code: string) => void;
+  curatorCode: string;
+  onCuratorCodeChange: (code: string) => void;
   onClose: () => void;
+  onSignOut: () => Promise<void>;
   onImportArchive: (
     members: FamilyMember[],
     code: string
@@ -39,11 +42,13 @@ interface ArchiveSettingsModalProps {
 
 export function ArchiveSettingsModal({
   open,
+  viewerEmail,
+  isCurator,
   members,
-  storageSource,
-  accessCode,
-  onAccessCodeChange,
+  curatorCode,
+  onCuratorCodeChange,
   onClose,
+  onSignOut,
   onImportArchive,
   onClearArchive,
   onLoadDemoSeed,
@@ -52,7 +57,7 @@ export function ArchiveSettingsModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [busyAction, setBusyAction] = useState<
-    "import" | "clear" | "seed" | null
+    "import" | "clear" | "seed" | "logout" | null
   >(null);
 
   const sizeKB = estimateArchiveSizeKB(members);
@@ -89,13 +94,11 @@ export function ArchiveSettingsModal({
       setBusyAction("import");
       setStatusMessage(null);
       setErrorMessage(null);
-      const res = await onImportArchive(result.members, accessCode);
+      const res = await onImportArchive(result.members, curatorCode);
       setBusyAction(null);
 
       if (!res.ok) {
-        setErrorMessage(
-          res.error || "Failed to import archive to Supabase."
-        );
+        setErrorMessage(res.error || "Failed to import archive to Supabase.");
         return;
       }
       setStatusMessage(
@@ -110,7 +113,7 @@ export function ArchiveSettingsModal({
     setBusyAction("clear");
     setStatusMessage(null);
     setErrorMessage(null);
-    const res = await onClearArchive(accessCode);
+    const res = await onClearArchive(curatorCode);
     setBusyAction(null);
 
     if (!res.ok) {
@@ -128,7 +131,7 @@ export function ArchiveSettingsModal({
     setBusyAction("seed");
     setStatusMessage(null);
     setErrorMessage(null);
-    const res = await onLoadDemoSeed(accessCode);
+    const res = await onLoadDemoSeed(curatorCode);
     setBusyAction(null);
 
     if (!res.ok) {
@@ -139,6 +142,12 @@ export function ArchiveSettingsModal({
     setStatusMessage(
       "Loaded the 14-member Vance–Moreau demo archive into Supabase."
     );
+  };
+
+  const handleLogout = async () => {
+    setBusyAction("logout");
+    await onSignOut();
+    setBusyAction(null);
   };
 
   return (
@@ -164,7 +173,7 @@ export function ArchiveSettingsModal({
                   Archive Stewardship
                 </p>
                 <h2 className="mt-0.5 font-editorial text-3xl text-[#F5F2EB]">
-                  Backup &amp; Settings
+                  Account &amp; Curator Settings
                 </h2>
               </div>
               <button
@@ -178,61 +187,68 @@ export function ArchiveSettingsModal({
             </div>
 
             <div className="space-y-5 p-6">
-              {/* Storage Backend Status */}
+              {/* Authenticated Session & Sign Out */}
               <div className="flex items-center justify-between rounded-2xl border border-[#F5F2EB]/10 bg-[#0B110E]/75 px-4 py-3.5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 text-[#E6C385]">
-                    {storageSource === "supabase" ? (
-                      <Cloud className="h-4 w-4" />
-                    ) : (
-                      <HardDrive className="h-4 w-4" />
-                    )}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D4A359]/30 bg-[#D4A359]/10 text-[#E6C385]">
+                    <Cloud className="h-4 w-4" />
                   </div>
-                  <div>
-                    <div className="text-xs font-medium text-[#F5F2EB]">
-                      {storageSource === "supabase"
-                        ? "Supabase Cloud Archive Connected"
-                        : "Local Demo Mode"}
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-medium text-[#F5F2EB]">
+                      {viewerEmail}
                     </div>
                     <div className="text-[11px] text-[#A6A095]">
-                      {members.length} members live across all devices
+                      {members.length} members · ~{sizeKB} KB visible
                     </div>
                   </div>
                 </div>
-                <span className="text-xs font-semibold text-[#E6C385]">
-                  ~{sizeKB} KB
-                </span>
+                <button
+                  type="button"
+                  disabled={busyAction === "logout"}
+                  onClick={() => void handleLogout()}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#F5F2EB]/15 px-3 py-1.5 text-[11px] text-[#A6A095] transition hover:border-[#D4A359]/45 hover:text-[#F5F2EB] cursor-pointer"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign Out
+                </button>
               </div>
 
-              {/* Family Invite / Curator Code */}
+              {/* Admin Curator Override Code */}
               <div className="rounded-2xl border border-[#D4A359]/22 bg-[#0B110E]/70 p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-xs font-medium text-[#E6C385]">
                     <KeyRound className="h-3.5 w-3.5" />
-                    Family Invite or Admin Curator Code
+                    Admin Curator Code
                   </label>
-                  {accessCode && (
-                    <button
-                      type="button"
-                      onClick={() => onAccessCodeChange("")}
-                      className="text-[10.5px] text-[#A6A095] hover:text-[#F5F2EB] cursor-pointer"
-                    >
-                      Clear saved
-                    </button>
+                  {isCurator ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      <ShieldCheck className="h-3 w-3" />
+                      Curator Unlocked
+                    </span>
+                  ) : (
+                    curatorCode && (
+                      <button
+                        type="button"
+                        onClick={() => onCuratorCodeChange("")}
+                        className="text-[10.5px] text-[#A6A095] hover:text-[#F5F2EB] cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )
                   )}
                 </div>
                 <input
                   type="password"
-                  value={accessCode}
+                  value={curatorCode}
                   onChange={(e) => {
-                    onAccessCodeChange(e.target.value);
+                    onCuratorCodeChange(e.target.value);
                     setErrorMessage(null);
                   }}
-                  placeholder="Enter Family Invite Code or Admin Curator Code..."
+                  placeholder="Enter Admin Curator Code for full visibility & archive overrides..."
                   className="w-full rounded-xl border border-[#D4A359]/25 bg-[#090D0B] px-3.5 py-2 text-xs text-[#F5F2EB] placeholder:text-[#A6A095]/55 focus:border-[#E6C385] focus:outline-none"
                 />
                 <p className="text-[10.5px] text-[#A6A095]">
-                  Cached on this device for adding relatives, photos, and spirit animals. Clearing the tree or importing backups requires the Admin Curator Code.
+                  Unlocks curator view across all private profiles, ownership claim approvals, tree resets, and JSON archive imports.
                 </p>
               </div>
 
@@ -249,7 +265,7 @@ export function ArchiveSettingsModal({
                       Export Archive (.json)
                     </div>
                     <div className="mt-0.5 text-[11px] text-[#A6A095]">
-                      Download a shareable backup with all stories &amp; photos
+                      Download visible archive records as a JSON backup
                     </div>
                   </div>
                 </button>
@@ -265,7 +281,7 @@ export function ArchiveSettingsModal({
                       Import Archive (.json)
                     </div>
                     <div className="mt-0.5 text-[11px] text-[#A6A095]">
-                      Overwrite cloud tree from a JSON backup (Curator)
+                      Overwrite cloud tree from backup (Curator)
                     </div>
                   </div>
                   <input
@@ -300,7 +316,7 @@ export function ArchiveSettingsModal({
                       Reset / Clear Tree
                     </p>
                     <p className="text-[11px] text-[#A6A095]">
-                      Permanently deletes all members from Supabase so you can start fresh
+                      Permanently deletes all members from Supabase (Curator)
                     </p>
                   </div>
 
@@ -344,7 +360,7 @@ export function ArchiveSettingsModal({
                       Load Demo Seed Data
                     </p>
                     <p className="text-[11px] text-[#A6A095]">
-                      Populates Supabase with the 14-member Vance–Moreau sample family
+                      Populates Supabase with the 14-member sample family (Curator)
                     </p>
                   </div>
                   <button

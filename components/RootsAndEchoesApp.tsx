@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, Settings, Sparkles } from "lucide-react";
 import {
+  AccessRequestRecord,
+  AccessRequestType,
   FamilyMember,
   MemoryPhoto,
   RelationshipLinkType,
@@ -15,16 +17,19 @@ import {
   normalizeGenerations,
 } from "@/lib/lineage";
 import {
-  loadSavedFamilyCode,
+  loadSavedCuratorCode,
   purgeLegacyLocalArchive,
-  saveFamilyCode,
+  saveCuratorCode,
 } from "@/lib/storage";
 import { soundscape } from "@/lib/soundscape";
+import { FamilyGate } from "@/components/auth/FamilyGate";
 import { TreeViewport } from "@/components/tree/TreeViewport";
 import { TopBar } from "@/components/hud/TopBar";
 import { BottomControls } from "@/components/hud/BottomControls";
 import { MemberDossier } from "@/components/dossier/MemberDossier";
 import { AddMemberWizard } from "@/components/wizard/AddMemberWizard";
+import { EditMemberModal } from "@/components/modals/EditMemberModal";
+import { RequestsDrawer } from "@/components/modals/RequestsDrawer";
 import { ArchiveSettingsModal } from "@/components/modals/ArchiveSettingsModal";
 
 interface MutationResult {
@@ -33,10 +38,27 @@ interface MutationResult {
 }
 
 export function RootsAndEchoesApp() {
+  // Authentication state
+  const [authChecked, setAuthChecked] = useState(false);
+  const [viewerEmail, setViewerEmail] = useState<string | null>(null);
+  const [isCurator, setIsCurator] = useState(false);
+  const [curatorCode, setCuratorCode] = useState("");
+
+  // Tree & archive state
   const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [isLoadingArchive, setIsLoadingArchive] = useState(true);
+  const [isLoadingArchive, setIsLoadingArchive] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Access requests state
+  const [incomingRequests, setIncomingRequests] = useState<
+    AccessRequestRecord[]
+  >([]);
+  const [outgoingRequests, setOutgoingRequests] = useState<
+    AccessRequestRecord[]
+  >([]);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+
+  // UI & 3D state
   const [layoutMode, setLayoutMode] = useState<TreeLayoutMode>("organic");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [activeGeneration, setActiveGeneration] = useState<number | null>(null);
@@ -50,70 +72,170 @@ export function RootsAndEchoesApp() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardSession, setWizardSession] = useState(0);
   const [wizardLinkedId, setWizardLinkedId] = useState<string | null>(null);
+  const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
+  const [requestsOpen, setRequestsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showOnboardingHint, setShowOnboardingHint] = useState(true);
 
-  const [storageSource, setStorageSource] = useState<"supabase" | "local">(
-    "supabase"
-  );
-  const [inviteRequired, setInviteRequired] = useState(true);
-  const [accessCode, setAccessCode] = useState("");
-
-  // Stop ambient audio gracefully on unmount
   useEffect(() => {
     return () => {
       soundscape.stopAmbient();
     };
   }, []);
 
-  // Load live authoritative tree from GET /api/family (no localStorage caching of members)
-  const fetchLiveArchive = useCallback(async () => {
-    setIsLoadingArchive(true);
-    setLoadError(null);
-    try {
-      const res = await fetch("/api/family", { cache: "no-store" });
-      const data = (await res.json()) as {
-        members?: FamilyMember[];
-        source?: "supabase" | "local";
-        inviteRequired?: boolean;
-        error?: string;
-      };
-      if (!res.ok) {
-        setLoadError(data.error || "Unable to load family archive from Supabase.");
-        return;
+  const buildAuthHeaders = useCallback(
+    (overrideCuratorCode?: string): Record<string, string> => {
+      const code = (overrideCuratorCode ?? curatorCode).trim();
+      const headers: Record<string, string> = {};
+      if (code) {
+        headers["x-curator-code"] = code;
       }
-      setStorageSource(data.source === "local" ? "local" : "supabase");
-      setInviteRequired(Boolean(data.inviteRequired));
-      setMembers(
-        Array.isArray(data.members) ? normalizeGenerations(data.members) : []
-      );
-    } catch {
-      setLoadError("Network error while loading the family tree.");
-    } finally {
-      setIsLoadingArchive(false);
-    }
-  }, []);
+      return headers;
+    },
+    [curatorCode]
+  );
 
+  const fetchRequests = useCallback(
+    async (overrideCuratorCode?: string) => {
+      try {
+        const res = await fetch("/api/access-requests", {
+          cache: "no-store",
+          headers: buildAuthHeaders(overrideCuratorCode),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          incoming?: AccessRequestRecord[];
+          outgoing?: AccessRequestRecord[];
+          pendingCount?: number;
+        };
+        setIncomingRequests(data.incoming ?? []);
+        setOutgoingRequests(data.outgoing ?? []);
+        setPendingRequestsCount(data.pendingCount ?? 0);
+      } catch {
+        // Ignore transient badge refresh failures
+      }
+    },
+    [buildAuthHeaders]
+  );
+
+  const fetchLiveArchive = useCallback(
+    async (overrideCuratorCode?: string) => {
+      setIsLoadingArchive(true);
+      setLoadError(null);
+      try {
+        const res = await fetch("/api/family", {
+          cache: "no-store",
+          headers: buildAuthHeaders(overrideCuratorCode),
+        });
+        if (res.status === 401) {
+          setViewerEmail(null);
+          setMembers([]);
+          return;
+        }
+        const data = (await res.json()) as {
+          members?: FamilyMember[];
+          isCurator?: boolean;
+          error?: string;
+        };
+        if (!res.ok) {
+          setLoadError(data.error || "Unable to load family archive.");
+          return;
+        }
+        setIsCurator(Boolean(data.isCurator));
+        setMembers(
+          Array.isArray(data.members) ? normalizeGenerations(data.members) : []
+        );
+      } catch {
+        setLoadError("Network error while loading the family tree.");
+      } finally {
+        setIsLoadingArchive(false);
+      }
+    },
+    [buildAuthHeaders]
+  );
+
+  // Initial session check on mount
   useEffect(() => {
     purgeLegacyLocalArchive();
     const frame = window.requestAnimationFrame(() => {
-      setAccessCode(loadSavedFamilyCode());
-      void fetchLiveArchive();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [fetchLiveArchive]);
+      const savedCurator = loadSavedCuratorCode();
+      setCuratorCode(savedCurator);
 
-  const handleAccessCodeChange = useCallback((code: string) => {
-    setAccessCode(code);
-    saveFamilyCode(code);
+      void fetch("/api/auth/session", {
+        cache: "no-store",
+        headers: savedCurator ? { "x-curator-code": savedCurator } : {},
+      })
+        .then((r) => r.json())
+        .then(
+          (data: {
+            authenticated?: boolean;
+            email?: string | null;
+            isCurator?: boolean;
+          }) => {
+            if (data.authenticated && data.email) {
+              setViewerEmail(data.email);
+              setIsCurator(Boolean(data.isCurator));
+              void fetchLiveArchive(savedCurator);
+              void fetchRequests(savedCurator);
+            } else {
+              setViewerEmail(null);
+            }
+          }
+        )
+        .catch(() => {
+          setViewerEmail(null);
+        })
+        .finally(() => {
+          setAuthChecked(true);
+        });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [fetchLiveArchive, fetchRequests]);
+
+  const handleAuthenticated = useCallback(
+    (email: string) => {
+      setViewerEmail(email);
+      void fetchLiveArchive();
+      void fetchRequests();
+    },
+    [fetchLiveArchive, fetchRequests]
+  );
+
+  const handleCuratorCodeChange = useCallback(
+    (code: string) => {
+      setCuratorCode(code);
+      saveCuratorCode(code);
+      if (viewerEmail) {
+        void fetchLiveArchive(code);
+        void fetchRequests(code);
+      }
+    },
+    [viewerEmail, fetchLiveArchive, fetchRequests]
+  );
+
+  const handleSignOut = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    soundscape.stopAmbient();
+    setAmbientPlaying(false);
+    setViewerEmail(null);
+    setIsCurator(false);
+    setMembers([]);
+    setSelectedMemberId(null);
+    setSettingsOpen(false);
+    setRequestsOpen(false);
   }, []);
 
   // Global Escape key closes open panels cleanly
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (wizardOpen) {
+      if (editingMember) {
+        setEditingMember(null);
+      } else if (wizardOpen) {
         setWizardOpen(false);
+      } else if (requestsOpen) {
+        setRequestsOpen(false);
       } else if (settingsOpen) {
         setSettingsOpen(false);
       } else if (selectedMemberId) {
@@ -123,20 +245,21 @@ export function RootsAndEchoesApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [wizardOpen, settingsOpen, selectedMemberId]);
+  }, [editingMember, wizardOpen, requestsOpen, settingsOpen, selectedMemberId]);
 
   const generations = useMemo(() => {
     const unique = Array.from(new Set(members.map((m) => m.generation)));
     return unique.sort((a, b) => a - b);
   }, [members]);
 
-  const earliestYear = useMemo(
-    () =>
-      members.length > 0
-        ? Math.min(...members.map((m) => m.birthYear))
-        : new Date().getFullYear(),
-    [members]
-  );
+  const earliestYear = useMemo(() => {
+    const validYears = members
+      .map((m) => m.birthYear)
+      .filter((y) => typeof y === "number" && y > 0);
+    return validYears.length > 0
+      ? Math.min(...validYears)
+      : new Date().getFullYear();
+  }, [members]);
 
   const selectedMember = useMemo(
     () => members.find((m) => m.id === selectedMemberId) ?? null,
@@ -175,7 +298,10 @@ export function RootsAndEchoesApp() {
     (id: string) => {
       const target = members.find((m) => m.id === id);
       if (target) {
-        soundscape.playNodeSelect(target.generation, target.birthYear);
+        soundscape.playNodeSelect(
+          target.generation,
+          target.birthYear || 1980
+        );
       }
       setSelectedMemberId(id);
       setActiveGeneration(null);
@@ -195,20 +321,151 @@ export function RootsAndEchoesApp() {
     setResetSignal((n) => n + 1);
   }, []);
 
-  // ─── CLOUD-FIRST MUTATIONS (ALWAYS CONFIRMED BY /api/family) ────────────────
+  // ─── CLOUD-FIRST MUTATIONS ──────────────────────────────────────────────────
 
-  const handleAddMemoryPhoto = useCallback(
+  const handleCreateMember = useCallback(
+    async (
+      newMember: FamilyMember,
+      linkTargetId: string,
+      linkType: RelationshipLinkType
+    ): Promise<MutationResult> => {
+      try {
+        const res = await fetch("/api/family", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...buildAuthHeaders(),
+          },
+          body: JSON.stringify({
+            newMember,
+            linkTargetId: linkTargetId || undefined,
+            linkType,
+          }),
+        });
+
+        const data = (await res.json()) as {
+          ok?: boolean;
+          members?: FamilyMember[];
+          createdId?: string;
+          error?: string;
+        };
+
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data.error || "Unable to save new member to Supabase.",
+          };
+        }
+
+        if (Array.isArray(data.members)) {
+          setMembers(normalizeGenerations(data.members));
+        } else {
+          await fetchLiveArchive();
+        }
+
+        soundscape.playBranchPlanted();
+        setSelectedMemberId(data.createdId || newMember.id);
+        setShowOnboardingHint(false);
+        return { ok: true };
+      } catch {
+        return {
+          ok: false,
+          error: "Network error while saving to Supabase.",
+        };
+      }
+    },
+    [buildAuthHeaders, fetchLiveArchive]
+  );
+
+  const handleSaveEdits = useCallback(
     async (
       memberId: string,
-      photo: MemoryPhoto,
-      familyCode: string
+      updates: Partial<FamilyMember>
     ): Promise<MutationResult> => {
       try {
         const res = await fetch("/api/family", {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-family-code": familyCode,
+            ...buildAuthHeaders(),
+          },
+          body: JSON.stringify({ memberId, updates }),
+        });
+
+        const data = (await res.json()) as {
+          ok?: boolean;
+          members?: FamilyMember[];
+          error?: string;
+        };
+
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data.error || "Unable to save profile edits.",
+          };
+        }
+
+        if (Array.isArray(data.members)) {
+          setMembers(normalizeGenerations(data.members));
+        } else {
+          await fetchLiveArchive();
+        }
+        return { ok: true };
+      } catch {
+        return { ok: false, error: "Network error while saving profile." };
+      }
+    },
+    [buildAuthHeaders, fetchLiveArchive]
+  );
+
+  const handleDeleteMember = useCallback(
+    async (memberId: string): Promise<MutationResult> => {
+      try {
+        const res = await fetch(
+          `/api/family?memberId=${encodeURIComponent(memberId)}`,
+          {
+            method: "DELETE",
+            headers: buildAuthHeaders(),
+          }
+        );
+
+        const data = (await res.json()) as {
+          ok?: boolean;
+          members?: FamilyMember[];
+          error?: string;
+        };
+
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data.error || "Unable to delete profile.",
+          };
+        }
+
+        if (Array.isArray(data.members)) {
+          setMembers(normalizeGenerations(data.members));
+        } else {
+          await fetchLiveArchive();
+        }
+        if (selectedMemberId === memberId) {
+          setSelectedMemberId(null);
+        }
+        return { ok: true };
+      } catch {
+        return { ok: false, error: "Network error while deleting profile." };
+      }
+    },
+    [buildAuthHeaders, fetchLiveArchive, selectedMemberId]
+  );
+
+  const handleAddMemoryPhoto = useCallback(
+    async (memberId: string, photo: MemoryPhoto): Promise<MutationResult> => {
+      try {
+        const res = await fetch("/api/family", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...buildAuthHeaders(),
           },
           body: JSON.stringify({ memberId, addMemoryPhoto: photo }),
         });
@@ -222,13 +479,10 @@ export function RootsAndEchoesApp() {
         if (!res.ok) {
           return {
             ok: false,
-            error: data.error || "Unable to save memory photo to Supabase.",
+            error: data.error || "Unable to upload memory photo.",
           };
         }
 
-        if (familyCode.trim()) {
-          handleAccessCodeChange(familyCode);
-        }
         if (Array.isArray(data.members)) {
           setMembers(normalizeGenerations(data.members));
         } else {
@@ -236,27 +490,23 @@ export function RootsAndEchoesApp() {
         }
         return { ok: true };
       } catch {
-        return {
-          ok: false,
-          error: "Network error while uploading memory photo. Please try again.",
-        };
+        return { ok: false, error: "Network error while uploading photo." };
       }
     },
-    [handleAccessCodeChange, fetchLiveArchive]
+    [buildAuthHeaders, fetchLiveArchive]
   );
 
   const handleUpdateSpiritAnimal = useCallback(
     async (
       memberId: string,
-      animal: SpiritAnimalType | undefined,
-      familyCode: string
+      animal: SpiritAnimalType | undefined
     ): Promise<MutationResult> => {
       try {
         const res = await fetch("/api/family", {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-family-code": familyCode,
+            ...buildAuthHeaders(),
           },
           body: JSON.stringify({ memberId, spiritAnimal: animal ?? null }),
         });
@@ -270,13 +520,10 @@ export function RootsAndEchoesApp() {
         if (!res.ok) {
           return {
             ok: false,
-            error: data.error || "Unable to update spirit animal in Supabase.",
+            error: data.error || "Unable to update spirit animal.",
           };
         }
 
-        if (familyCode.trim()) {
-          handleAccessCodeChange(familyCode);
-        }
         if (Array.isArray(data.members)) {
           setMembers(normalizeGenerations(data.members));
         } else {
@@ -287,92 +534,22 @@ export function RootsAndEchoesApp() {
         }
         return { ok: true };
       } catch {
-        return {
-          ok: false,
-          error: "Network error while updating spirit animal. Please try again.",
-        };
+        return { ok: false, error: "Network error while updating spirit animal." };
       }
     },
-    [handleAccessCodeChange, fetchLiveArchive]
+    [buildAuthHeaders, fetchLiveArchive]
   );
 
-  const handleCreateMember = useCallback(
-    async (
-      newMember: FamilyMember,
-      linkTargetId: string,
-      linkType: RelationshipLinkType,
-      familyCode: string
-    ): Promise<MutationResult> => {
-      // Build the linked snapshot from the current confirmed members array
-      const target = members.find((m) => m.id === linkTargetId);
-      let nextSnapshot: FamilyMember[];
-
-      if (!target) {
-        nextSnapshot = normalizeGenerations([...members, newMember]);
-      } else {
-        const linkedNew: FamilyMember = { ...newMember };
-        const updated = members.map((existing) => {
-          if (existing.id !== linkTargetId) {
-            if (
-              linkType === "child" &&
-              target.partnerIds.includes(existing.id)
-            ) {
-              linkedNew.parentIds = Array.from(
-                new Set([...linkedNew.parentIds, existing.id])
-              );
-              return {
-                ...existing,
-                childrenIds: Array.from(
-                  new Set([...existing.childrenIds, linkedNew.id])
-                ),
-              };
-            }
-            return existing;
-          }
-
-          if (linkType === "child") {
-            linkedNew.parentIds = Array.from(
-              new Set([...linkedNew.parentIds, existing.id])
-            );
-            return {
-              ...existing,
-              childrenIds: Array.from(
-                new Set([...existing.childrenIds, linkedNew.id])
-              ),
-            };
-          }
-
-          if (linkType === "partner") {
-            linkedNew.partnerIds = [existing.id];
-            return {
-              ...existing,
-              partnerIds: Array.from(
-                new Set([...existing.partnerIds, linkedNew.id])
-              ),
-            };
-          }
-
-          // linkType === "parent"
-          linkedNew.childrenIds = [existing.id];
-          return {
-            ...existing,
-            parentIds: Array.from(
-              new Set([...existing.parentIds, linkedNew.id])
-            ),
-          };
-        });
-
-        nextSnapshot = normalizeGenerations([...updated, linkedNew]);
-      }
-
+  const handleTogglePublicToFamily = useCallback(
+    async (memberId: string, isPublic: boolean): Promise<MutationResult> => {
       try {
         const res = await fetch("/api/family", {
-          method: "POST",
+          method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-family-code": familyCode,
+            ...buildAuthHeaders(),
           },
-          body: JSON.stringify({ members: nextSnapshot }),
+          body: JSON.stringify({ memberId, isPublicToFamily: isPublic }),
         });
 
         const data = (await res.json()) as {
@@ -384,31 +561,86 @@ export function RootsAndEchoesApp() {
         if (!res.ok) {
           return {
             ok: false,
-            error: data.error || "Unable to save new member to Supabase.",
+            error: data.error || "Unable to update profile visibility.",
           };
         }
 
-        if (familyCode.trim()) {
-          handleAccessCodeChange(familyCode);
-        }
         if (Array.isArray(data.members)) {
           setMembers(normalizeGenerations(data.members));
         } else {
           await fetchLiveArchive();
         }
-
-        soundscape.playBranchPlanted();
-        setSelectedMemberId(newMember.id);
-        setShowOnboardingHint(false);
         return { ok: true };
       } catch {
-        return {
-          ok: false,
-          error: "Network error while saving to Supabase. Please check your connection and try again.",
-        };
+        return { ok: false, error: "Network error while updating visibility." };
       }
     },
-    [members, handleAccessCodeChange, fetchLiveArchive]
+    [buildAuthHeaders, fetchLiveArchive]
+  );
+
+  const handleRequestAccess = useCallback(
+    async (
+      memberId: string,
+      note: string,
+      requestType: AccessRequestType
+    ): Promise<MutationResult> => {
+      try {
+        const res = await fetch("/api/access-requests", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...buildAuthHeaders(),
+          },
+          body: JSON.stringify({ memberId, note, requestType }),
+        });
+
+        const data = (await res.json()) as { ok?: boolean; error?: string };
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data.error || "Unable to send request.",
+          };
+        }
+
+        await Promise.all([fetchLiveArchive(), fetchRequests()]);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: "Network error while submitting request." };
+      }
+    },
+    [buildAuthHeaders, fetchLiveArchive, fetchRequests]
+  );
+
+  const handleRespondRequest = useCallback(
+    async (
+      requestId: string,
+      decision: "approved" | "declined"
+    ): Promise<MutationResult> => {
+      try {
+        const res = await fetch("/api/access-requests", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...buildAuthHeaders(),
+          },
+          body: JSON.stringify({ requestId, decision }),
+        });
+
+        const data = (await res.json()) as { ok?: boolean; error?: string };
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data.error || "Unable to update request.",
+          };
+        }
+
+        await Promise.all([fetchLiveArchive(), fetchRequests()]);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: "Network error while updating request." };
+      }
+    },
+    [buildAuthHeaders, fetchLiveArchive, fetchRequests]
   );
 
   const handleImportArchive = useCallback(
@@ -422,7 +654,7 @@ export function RootsAndEchoesApp() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-family-code": code,
+            ...buildAuthHeaders(code),
           },
           body: JSON.stringify({ members: normalized, replaceAll: true }),
         });
@@ -439,9 +671,6 @@ export function RootsAndEchoesApp() {
           };
         }
 
-        if (code.trim()) {
-          handleAccessCodeChange(code);
-        }
         setMembers(
           Array.isArray(data.members)
             ? normalizeGenerations(data.members)
@@ -454,11 +683,11 @@ export function RootsAndEchoesApp() {
       } catch {
         return {
           ok: false,
-          error: "Network error while importing archive to Supabase.",
+          error: "Network error while importing archive.",
         };
       }
     },
-    [handleAccessCodeChange]
+    [buildAuthHeaders]
   );
 
   const handleClearArchive = useCallback(
@@ -466,15 +695,9 @@ export function RootsAndEchoesApp() {
       try {
         const res = await fetch("/api/family", {
           method: "DELETE",
-          headers: {
-            "x-family-code": code,
-          },
+          headers: buildAuthHeaders(code),
         });
-        const data = (await res.json()) as {
-          ok?: boolean;
-          members?: FamilyMember[];
-          error?: string;
-        };
+        const data = (await res.json()) as { ok?: boolean; error?: string };
 
         if (!res.ok) {
           return {
@@ -483,22 +706,17 @@ export function RootsAndEchoesApp() {
           };
         }
 
-        if (code.trim()) {
-          handleAccessCodeChange(code);
-        }
         setMembers([]);
         setSelectedMemberId(null);
         setActiveGeneration(null);
         setResetSignal((n) => n + 1);
+        await fetchRequests(code);
         return { ok: true };
       } catch {
-        return {
-          ok: false,
-          error: "Network error while clearing the cloud tree.",
-        };
+        return { ok: false, error: "Network error while clearing tree." };
       }
     },
-    [handleAccessCodeChange]
+    [buildAuthHeaders, fetchRequests]
   );
 
   const handleLoadDemoSeed = useCallback(
@@ -508,7 +726,7 @@ export function RootsAndEchoesApp() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-family-code": code,
+            ...buildAuthHeaders(code),
           },
           body: JSON.stringify({ action: "seed-demo" }),
         });
@@ -521,17 +739,14 @@ export function RootsAndEchoesApp() {
         if (!res.ok) {
           return {
             ok: false,
-            error: data.error || "Unable to load demo seed data into Supabase.",
+            error: data.error || "Unable to load demo seed data.",
           };
         }
 
-        if (code.trim()) {
-          handleAccessCodeChange(code);
-        }
         if (Array.isArray(data.members)) {
           setMembers(normalizeGenerations(data.members));
         } else {
-          await fetchLiveArchive();
+          await fetchLiveArchive(code);
         }
         setSelectedMemberId(null);
         setActiveGeneration(null);
@@ -544,7 +759,7 @@ export function RootsAndEchoesApp() {
         };
       }
     },
-    [handleAccessCodeChange, fetchLiveArchive]
+    [buildAuthHeaders, fetchLiveArchive]
   );
 
   const handleQuickAddRelative = useCallback((memberId: string) => {
@@ -558,6 +773,22 @@ export function RootsAndEchoesApp() {
     setWizardSession((n) => n + 1);
     setWizardOpen(true);
   }, [selectedMemberId]);
+
+  // ─── AUTH GATE ──────────────────────────────────────────────────────────────
+  if (!authChecked) {
+    return (
+      <main className="flex h-screen w-screen flex-col items-center justify-center bg-[#090D0B] text-[#F5F2EB]">
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#D4A359]/20 border-t-[#D4A359]" />
+        <p className="mt-4 font-editorial text-2xl tracking-wide">
+          Roots &amp; Echoes
+        </p>
+      </main>
+    );
+  }
+
+  if (!viewerEmail) {
+    return <FamilyGate onAuthenticated={handleAuthenticated} />;
+  }
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#090D0B]">
@@ -576,12 +807,13 @@ export function RootsAndEchoesApp() {
       {/* Subtle ambient archival vignette overlay */}
       <div className="archival-vignette pointer-events-none fixed inset-0 z-10" />
 
-      {/* Top Floating Search, Generation Filter & Layout Toggle */}
+      {/* Top Floating Search, Generation Filter, Layout Toggle & My Profiles / Requests */}
       <TopBar
         members={members}
         generations={generations}
         layoutMode={layoutMode}
         activeGeneration={activeGeneration}
+        pendingRequestsCount={pendingRequestsCount}
         onLayoutChange={(mode) => {
           soundscape.playLayoutShift(mode);
           setLayoutMode(mode);
@@ -592,6 +824,10 @@ export function RootsAndEchoesApp() {
           if (gen !== null) setSelectedMemberId(null);
         }}
         onSelectMember={handleSelectMember}
+        onOpenRequests={() => {
+          void fetchRequests();
+          setRequestsOpen(true);
+        }}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
@@ -649,7 +885,7 @@ export function RootsAndEchoesApp() {
                   className="inline-flex items-center gap-1.5 rounded-full border border-[#D4A359]/30 bg-[#0B110E]/75 px-4 py-2.5 text-xs font-medium text-[#E6C385] transition hover:bg-[#D4A359]/15 cursor-pointer"
                 >
                   <Settings className="h-3.5 w-3.5" />
-                  Load Demo / Settings
+                  Curator Settings
                 </button>
               </div>
             </div>
@@ -668,7 +904,7 @@ export function RootsAndEchoesApp() {
             className="pointer-events-none fixed bottom-20 left-1/2 z-20 -translate-x-1/2"
           >
             <div className="glass-panel rounded-full px-4 py-1.5 text-[11px] tracking-wide text-[#F5F2EB]/80 whitespace-nowrap">
-              Click any glowing node to open their dossier · Toggle Ambiance for chamber strings
+              Click any branch to view or request access · Toggle Ambiance for chamber strings
             </div>
           </motion.div>
         )}
@@ -694,16 +930,17 @@ export function RootsAndEchoesApp() {
         onOpenWizard={handleOpenWizardDefault}
       />
 
-      {/* Slide-Over Glass Family Member Dossier */}
+      {/* Slide-Over Glass Family Member Dossier (Private Request Gate or Full Dossier) */}
       <MemberDossier
         member={selectedMember}
         allMembers={members}
-        inviteRequired={inviteRequired}
-        savedFamilyCode={accessCode}
         onClose={handleClearSelection}
         onSelectMember={handleSelectMember}
         onAddMemoryPhoto={handleAddMemoryPhoto}
         onUpdateSpiritAnimal={handleUpdateSpiritAnimal}
+        onTogglePublicToFamily={handleTogglePublicToFamily}
+        onEditMember={(m) => setEditingMember(m)}
+        onRequestAccess={handleRequestAccess}
         onQuickAddRelative={handleQuickAddRelative}
       />
 
@@ -713,20 +950,46 @@ export function RootsAndEchoesApp() {
         open={wizardOpen}
         existingMembers={members}
         initialLinkedMemberId={wizardLinkedId}
-        inviteRequired={inviteRequired}
-        savedFamilyCode={accessCode}
         onClose={() => setWizardOpen(false)}
         onCreateMember={handleCreateMember}
       />
 
-      {/* Export / Import Backup & Curator Settings Modal */}
+      {/* Creator / Curator Self-Edit Profile Modal */}
+      {editingMember && (
+        <EditMemberModal
+          key={editingMember.id}
+          member={editingMember}
+          onClose={() => setEditingMember(null)}
+          onSaveEdits={handleSaveEdits}
+          onDeleteMember={handleDeleteMember}
+        />
+      )}
+
+      {/* My Profiles & Incoming Access Requests Drawer */}
+      <RequestsDrawer
+        open={requestsOpen}
+        viewerEmail={viewerEmail}
+        isCurator={isCurator}
+        members={members}
+        incoming={incomingRequests}
+        outgoing={outgoingRequests}
+        onClose={() => setRequestsOpen(false)}
+        onRespondRequest={handleRespondRequest}
+        onSelectMember={handleSelectMember}
+        onEditMember={(m) => setEditingMember(m)}
+        onTogglePublicToFamily={handleTogglePublicToFamily}
+      />
+
+      {/* Account, Curator Override & Backup Settings Modal */}
       <ArchiveSettingsModal
         open={settingsOpen}
+        viewerEmail={viewerEmail}
+        isCurator={isCurator}
         members={members}
-        storageSource={storageSource}
-        accessCode={accessCode}
-        onAccessCodeChange={handleAccessCodeChange}
+        curatorCode={curatorCode}
+        onCuratorCodeChange={handleCuratorCodeChange}
         onClose={() => setSettingsOpen(false)}
+        onSignOut={handleSignOut}
         onImportArchive={handleImportArchive}
         onClearArchive={handleClearArchive}
         onLoadDemoSeed={handleLoadDemoSeed}
