@@ -1,6 +1,11 @@
 export type TreeLayoutMode = "organic" | "radial";
 
-export type RelationshipLinkType = "child" | "partner" | "parent";
+export type RelationshipLinkType =
+  | "child"
+  | "partner"
+  | "parent"
+  | "brother"
+  | "sister";
 
 export type SpiritAnimalType = "panther" | "bird" | "owl";
 

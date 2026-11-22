@@ -293,6 +293,20 @@ export async function POST(request: NextRequest) {
           id: target.id,
           parent_ids: Array.from(new Set([...target.parentIds, incoming.id])),
         });
+      } else if (linkType === "brother" || linkType === "sister") {
+        generation = target.generation;
+        for (const pid of target.parentIds) {
+          const sharedParent = existingMembers.find((m) => m.id === pid);
+          if (sharedParent) {
+            parentIds.push(sharedParent.id);
+            edgeUpdates.push({
+              id: sharedParent.id,
+              children_ids: Array.from(
+                new Set([...sharedParent.childrenIds, incoming.id])
+              ),
+            });
+          }
+        }
       }
     }
 

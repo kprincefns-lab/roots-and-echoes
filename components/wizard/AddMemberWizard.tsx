@@ -446,8 +446,16 @@ export function AddMemberWizard({
                             ))}
                           </select>
                           <span>as their</span>
-                          <div className="inline-flex rounded-xl border border-[#D4A359]/30 bg-[#090D0B]/85 p-1">
-                            {(["child", "partner", "parent"] as const).map((rel) => (
+                          <div className="inline-flex flex-wrap gap-1 rounded-xl border border-[#D4A359]/30 bg-[#090D0B]/85 p-1">
+                            {(
+                              [
+                                "child",
+                                "partner",
+                                "parent",
+                                "brother",
+                                "sister",
+                              ] as const
+                            ).map((rel) => (
                               <button
                                 key={rel}
                                 type="button"

@@ -120,6 +120,14 @@ export function MemberDossier({
         .map((id) => byId.get(id))
         .filter((m): m is FamilyMember => Boolean(m))
     : [];
+  const siblings = member
+    ? allMembers.filter(
+        (other) =>
+          other.id !== member.id &&
+          member.parentIds.length > 0 &&
+          other.parentIds.some((pid) => member.parentIds.includes(pid))
+      )
+    : [];
 
   const isLocked =
     member?.accessStatus === "locked" || member?.accessStatus === "pending";
@@ -441,7 +449,10 @@ export function MemberDossier({
             </AnimatePresence>
 
             {/* Clickable Relationship Badges (Names only — always visible for tree navigation) */}
-            {(parents.length > 0 || partners.length > 0 || children.length > 0) && (
+            {(parents.length > 0 ||
+              partners.length > 0 ||
+              siblings.length > 0 ||
+              children.length > 0) && (
               <div className="mt-3.5 flex flex-wrap gap-1.5">
                 {parents.map((p) => (
                   <button
@@ -467,6 +478,19 @@ export function MemberDossier({
                       Partner
                     </span>
                     <span>{p.firstName}</span>
+                  </button>
+                ))}
+                {siblings.map((s) => (
+                  <button
+                    key={`sib-${s.id}`}
+                    type="button"
+                    onClick={() => onSelectMember(s.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#F5F2EB]/12 bg-[#0B110E]/75 px-2.5 py-1 text-[11px] text-[#F5F2EB]/85 transition hover:border-[#D4A359]/55 hover:text-[#E6C385] cursor-pointer"
+                  >
+                    <span className="text-[9.5px] uppercase tracking-wider text-[#D4A359]/80">
+                      Sibling
+                    </span>
+                    <span>{s.firstName}</span>
                   </button>
                 ))}
                 {children.map((c) => (
